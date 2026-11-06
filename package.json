@@ -1,0 +1,17 @@
+{
+  "name": "flixtor-tv-prototype",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Remote-first FlixTor interface prototype for TizenBrew",
+  "packageType": "mods",
+  "appName": "FlixTor TV",
+  "websiteURL": "https://flixtor.to/home",
+  "main": "tv.js",
+  "keys": [
+    "MediaPlayPause",
+    "MediaPlay",
+    "MediaPause",
+    "MediaRewind",
+    "MediaFastForward"
+  ]
+}
