@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.1`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.1.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.2`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.1.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.1` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.2` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -92,3 +92,11 @@ with the remote. Unknown ratings do not satisfy a minimum-rating filter.
 The local Chrome test opens `FlixTor_TV_Live.html` through port 8765 and uses
 the recommendation bridge on port 8767. The HTML is regenerated during build,
 so browser UI updates are available on the next page load.
+
+### 0.3.2: title details and immediate cinema playback
+
+Selecting a catalogue card opens its native title page behind the TV interface, showing FlixTor's synopsis, numerical rating and content certificate when supplied. Series include the native season/episode list. Movie details pause automatic playback until Play is selected. Favorites and progress continue to use FlixTor.
+
+Play expands the existing player to the viewport immediately and selects the highest quality offered by its quality API after the stream is ready. It does not invent a 4K source or replace the native stream. Back from playback returns to details.
+
+A background cover is installed as soon as the module runs, and catalogue readiness uses DOM changes instead of 400 ms polling. The Chrome helper now runs at document start in the page's JavaScript world so it can use the same player API as the TV module. TizenBrew controls when the TV module is injected; frames painted before injection cannot be concealed by this module. Physical Samsung testing remains necessary to measure any residual flash.

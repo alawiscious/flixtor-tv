@@ -24,3 +24,13 @@ assert(!new URL(filter.target(filteredURL.href,'rating',0)).searchParams.has('ra
 assert.equal(new URL(filter.target(filteredURL.href,'reset',0)).search,'');
 assert.throws(()=>filter.target(filteredURL.href,'yrf',2027));assert.throws(()=>filter.target('https://example.com/show/movies','rating',8));
 console.log('PASS: inclusive year/rating bounds, unknown metadata, pagination reset, preserved native query and invalid ranges.');
+
+const playerContext={};vm.createContext(playerContext);vm.runInContext(fs.readFileSync(__dirname+'/src/player.js','utf8'),playerContext);
+const quality=playerContext.FTV_PLAYER;
+assert.equal(quality.bestQuality([{label:'Auto'},{label:'720p'},{label:'1080p'},{label:'480p'}]),2);
+assert.equal(quality.bestQuality([{label:'Auto',height:2160},{label:'1080p'},{label:'4K'}]),2);
+assert.equal(quality.bestQuality([]),-1);
+let selected=0;const levels=[{label:'Auto'},{label:'720p'},{label:'1080p'}];
+assert(quality.preferHighest({getQualityLevels:()=>levels,getCurrentQuality:()=>selected,setCurrentQuality:i=>{selected=i;}}));assert.equal(selected,2);
+assert(!quality.preferHighest({getQualityLevels:()=>{throw new Error('not ready');}}));
+console.log('PASS: highest offered quality, Auto exclusion, empty/unready player and selected-quality confirmation.');
