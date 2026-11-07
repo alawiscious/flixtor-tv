@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.0`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.0.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.1`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.1.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.0` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.1` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -80,3 +80,15 @@ Validation: `node build.cjs`, `node check.cjs`,
 `python3 -m unittest discover -s backend -p 'test_*.py'`. Browser integration covers
 live Gorse recommendations, native catalogue ingestion, search and remote focus.
 A physical TV check is still needed for service startup and native playback.
+
+## Browser filter update (0.3.1)
+
+The live browser test now includes From year, To year, minimum rating and Reset
+filters beside Genre and Sort. Year/rating selections use FlixTor's native
+`yrf`, `yrt` and `rating` query parameters, reset pagination to the first page,
+and remain active on subsequent pages. Older years can be selected by decade
+with the remote. Unknown ratings do not satisfy a minimum-rating filter.
+
+The local Chrome test opens `FlixTor_TV_Live.html` through port 8765 and uses
+the recommendation bridge on port 8767. The HTML is regenerated during build,
+so browser UI updates are available on the next page load.
