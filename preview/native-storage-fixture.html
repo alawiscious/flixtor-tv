@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Native action bridge test fixture</title></head><body>
+<p>Internal QA fixture. This is not the real FlixTor account.</p><output id="native-result">No native Favorite action yet</output>
+<script src="sample.js"></script><script>
+(function(){
+  var examples=window.FTV_PREVIEW;delete window.FTV_PREVIEW;
+  examples.forEach(function(i){
+    var flip=document.createElement('div');flip.className='flip';
+    var front=document.createElement('div');front.className='front';var image=document.createElement('img');image.src=i.image;image.alt=i.title;front.appendChild(image);var title=document.createElement('div');title.className='card-footer';title.textContent=i.title;front.appendChild(title);flip.appendChild(front);
+    var year=document.createElement('span');year.className='t12';year.textContent=i.year;flip.appendChild(year);var genre=document.createElement('span');genre.className='genres';genre.textContent=i.meta;flip.appendChild(genre);
+    var link=document.createElement('a');link.href=i.url;link.textContent='Watch Now';flip.appendChild(link);
+    var favorite=document.createElement('span');favorite.className='favorite fa-heart-o';favorite.dataset.pid=(i.url.match(/\/(?:tv|movie)\/(\d+)/)||[])[1];favorite.setAttribute('role','button');favorite.textContent='Original Favorite';favorite.addEventListener('click',function(){var on=favorite.classList.contains('fa-heart');favorite.classList.toggle('fa-heart',!on);favorite.classList.toggle('fa-heart-o',on);document.getElementById('native-result').textContent=i.title+': '+(!on?'saved by native handler':'removed by native handler');});flip.appendChild(favorite);document.body.appendChild(flip);
+  });
+}());
+</script><script src="../tv.js"></script></body></html>

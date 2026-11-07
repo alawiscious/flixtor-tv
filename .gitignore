@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+personalization/
+distribution/
+Claude_Code_Tizen_Install_Handoff.md
+tv-0.2.1.js
+tv-0.2.2.js
+__pycache__/
+*.log
