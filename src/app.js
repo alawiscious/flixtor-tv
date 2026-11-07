@@ -200,7 +200,7 @@
       if(host.contains(e)||(originalKeyboard&&originalKeyboard.contains(e))||!isVisible(e)||getComputedStyle(e).visibility==='hidden')return false;
       // FlixTor's VIP anchor has role=button but no href and tabIndex=-1.
       var actionable=e.matches('button,input,select,textarea,a[href],[role="button"],[onclick],[data-toggle],.vipmenu > a,.favorite[data-pid]');
-      if(actionable&&e.tabIndex<0)e.setAttribute('tabindex','0');return e.tabIndex>=0;
+      if(actionable&&e.tabIndex<0)e.setAttribute('tabindex','0');if(e.matches('.favorite[data-pid]')){e.setAttribute('role','button');e.setAttribute('aria-label',e.getAttribute('title')||'Toggle favorite');}return e.tabIndex>=0;
     });
     if(modal&&originalBar)controls=controls.concat(list(originalBar,'button'));return controls;
   }
