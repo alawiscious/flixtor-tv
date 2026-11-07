@@ -5,7 +5,8 @@
   'use strict';
   var http = require('http');
   var relayHost = process.env.FTV_RELAY_HOST || '192.168.1.84';
-  var allowedOrigins = ['http://127.0.0.1:8767', 'http://127.0.0.1:8765', 'http://localhost:8765'];
+  var localPort=Number(process.env.FTV_PORT)||8767;
+  var allowedOrigins = ['http://127.0.0.1:'+localPort, 'http://127.0.0.1:8765', 'http://localhost:8765'];
   var server = http.createServer(function (req, res) {
     if(req.method==='GET'&&req.url==='/tv'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'origin','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://img.xcdn.to https://image.tmdb.org data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(FTV_SHELL);return;}
     var origin = req.headers.origin;
@@ -42,5 +43,5 @@
     } else forward('');
   });
   server.on('error', function (err) { if (err.code !== 'EADDRINUSE') console.error('FlixTor recommendation bridge: ' + err.code); });
-  server.listen(8767, '127.0.0.1');
+  server.listen(localPort, '127.0.0.1');
 }());
