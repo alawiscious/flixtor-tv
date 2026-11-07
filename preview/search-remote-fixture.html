@@ -11,4 +11,4 @@
     var favorite=document.createElement('span');favorite.className='favorite fa-heart-o';favorite.dataset.pid=(i.url.match(/\/(?:tv|movie)\/(\d+)/)||[])[1];favorite.setAttribute('role','button');favorite.textContent='Original Favorite';favorite.addEventListener('click',function(){var on=favorite.classList.contains('fa-heart');favorite.classList.toggle('fa-heart',!on);favorite.classList.toggle('fa-heart-o',on);document.getElementById('native-result').textContent=i.title+': '+(!on?'saved by native handler':'removed by native handler');});flip.appendChild(favorite);document.body.appendChild(flip);
   });
 }());
-</script><script>history.replaceState(null,"","/search/Severance");</script><script src="/tv-0.2.4.js"></script></body></html>
+</script><script>history.replaceState(null,"","/search/Severance");</script><script src="/tv-0.3.0.js"></script></body></html>

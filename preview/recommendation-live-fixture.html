@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>TV recommendation service check</title></head><body>
+<p>Start the local service with <code>FTV_RELAY_HOST=127.0.0.1 node service.js</code> and keep the Mac relay running.</p>
+<button id="open">Open connected TV interface</button><script>
+document.getElementById('open').onclick=function(){
+var data={path:'/home',href:'https://flixtor.to/home',pages:[],items:[{title:'MobLand',year:'2025',meta:'Crime, Drama',image:'https://img.xcdn.to/t/p/w342/5Xc7WpWsgflfgEMoBlf9TmWhfbH.jpg',url:'https://flixtor.to/watch/tv/13871234/mobland'}]};
+location.assign('http://127.0.0.1:8767/tv#'+encodeURIComponent(JSON.stringify(data)));
+};
+</script></body></html>
