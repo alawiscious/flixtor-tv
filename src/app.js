@@ -12,7 +12,15 @@
     shellSnapshot.pages=Array.isArray(shellSnapshot.pages)?shellSnapshot.pages:[];
     shellSnapshot.items=(Array.isArray(shellSnapshot.items)?shellSnapshot.items:[]).slice(0,400).filter(function(i){return i&&typeof i.title==='string'&&typeof i.url==='string'&&watchURL(i.url)&&typeof i.image==='string';});
   }
+  var detailsMode=location.hash==='#ftv-details';
   var explicitOriginal=!localShell&&/^#ftv-(original|search)$/.test(location.hash);
+  // Install this before DOMContentLoaded; never conceal sign-in or explicit native mode.
+  var transitionStyle=null;
+  function coverSource(){
+    if(preview||localShell||explicitOriginal||location.hostname!=='flixtor.to'||/^\/(vipsignin|faq|dmca)/.test(location.pathname))return;
+    if(!transitionStyle){transitionStyle=document.createElement('style');transitionStyle.textContent='html{background:#090d12!important}body{visibility:hidden!important}#ftv,#ftv *{visibility:visible!important}';(document.head||document.documentElement).appendChild(transitionStyle);}
+  }
+  function uncoverSource(){if(transitionStyle){transitionStyle.remove();transitionStyle=null;}}
   function sourcePath(){return localShell?shellSnapshot.path:location.pathname;}
   function sourceHref(){return localShell?shellSnapshot.href:location.href;}
   function siteRoute(path){return 'https://flixtor.to'+path;}
@@ -66,7 +74,7 @@
     if(name==='Search'||name==='For You'){tab=name;render();focus(main.querySelector('input,button')||nav.querySelector('.active'));if(name==='For You'&&recommendationState==='idle')loadRecommendations();return;}
     var target=routes[name];if(!target)return;
     if(sourcePath()===target){tab=name;render();focus(main.querySelector('button,input')||nav.querySelector('.active'));return;}
-    main.classList.add('leaving');setTimeout(function(){location.assign(siteRoute(target));},motion?140:0);
+    main.classList.add('leaving');location.assign(siteRoute(target));
   }
   function saveFavorite(item,b){
     if(preview){demoFavorites[item.url]=!demoFavorites[item.url];b.textContent=favorite(item)?'✓ In My List':'+ My List';b.setAttribute('aria-pressed',String(favorite(item)));toast('Preview list updated · live mode uses FlixTor Favorites');return;}
@@ -80,7 +88,7 @@
   function heading(title,description){var e=node('div','page-heading');append(e,node('p','eyebrow','YOUR TV, SIMPLIFIED'),node('h1','',title));if(description)e.appendChild(node('p','muted',description));main.appendChild(e);}
   function empty(title,description,action){var e=node('div','empty');append(e,node('h2','',title),node('p','',description));if(action){var a=row(e,'actions');a.appendChild(button(action.label,action.fn,'primary'));}main.appendChild(e);}
   function hero(item){var e=node('section','hero');var im=node('img','hero-art');im.src=item.image;im.alt='';im.onerror=function(){im.style.display='none';};var copy=node('div','hero-copy');append(copy,node('p','eyebrow','IN THE SPOTLIGHT'),node('h1','',item.title));copy.appendChild(meta(item));copy.appendChild(node('p','synopsis',item.description||'Make tonight a good story. Explore this '+(tv(item)?'series':'movie')+', save it for later, or find something similar.'));var a=row(copy,'actions');a.appendChild(button(tv(item)?'▶ Explore series':'▶ Movie details',function(){showDetail(item,a.firstChild);},'primary'));a.appendChild(button('More like this',function(){showSimilar(item);},''));append(e,im,copy,node('span','hero-count',preview?'DESIGN PREVIEW':'FLIXTOR CATALOGUE'));main.appendChild(e);}
-  function meta(item){var e=node('div','meta');[item.year,tv(item)?'Series':'Movie',item.meta].filter(Boolean).forEach(function(t){e.appendChild(node('span','',t));});if(item.rating)e.appendChild(node('span','rating','★ '+item.rating));return e;}
+  function meta(item){var e=node('div','meta');[item.year,tv(item)?'Series':'Movie',item.meta].filter(Boolean).forEach(function(t){e.appendChild(node('span','',t));});if(item.rating)e.appendChild(node('span','rating','★ '+item.rating+' / 10'));else e.appendChild(node('span','muted','Not yet rated'));if(item.certification)e.appendChild(node('span','',item.certification));return e;}
   function changeCatalogueFilter(key,value){
     var target;
     try{var base=new URL(nativeFilters()?sourceHref():siteRoute(sourcePath()));if(!nativeFilters()){[['yrf',filterState.from],['yrt',filterState.to],['rating',filterState.rating]].forEach(function(pair){if(pair[1])base.searchParams.set(pair[0],String(pair[1]));});}target=FTV_FILTERS.target(base.href,key,value);}catch(error){toast(error.message);return;}
@@ -208,9 +216,10 @@
   function similar(seed){var tags=tokens(seed);return all.filter(function(i){return i.url!==seed.url&&tokens(i).some(function(g){return tags.indexOf(g)!==-1;});}).sort(function(a,b){function score(i){return tokens(i).filter(function(g){return tags.indexOf(g)!==-1;}).length;}return score(b)-score(a);});}
   function showSimilar(seed){tab='For You';render();main.textContent='';heading('More like '+seed.title,'Similar genres in this collection.');var candidates=similar(seed);if(candidates.length)grid(candidates);else empty('No similar titles loaded','Browse the full FlixTor catalogue for more choices.');focus(main.querySelector('button')||nav.querySelector('.active'));}
   function startDialog(title,from){if(dialog)dialog.remove();returnFocus=from||document.activeElement;dialog=node('div','overlay');dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-label',title);var wrap=node('div','detail-wrap');dialog.appendChild(wrap);host.appendChild(dialog);var r=row(wrap,'detail-top');r.appendChild(button('← Back',closeDialog));return wrap;}
-  function closeDialog(){if(!dialog||pendingClose)return;pendingClose=true;var d=dialog;d.classList.add('closing');setTimeout(function(){d.remove();dialog=null;detailItem=null;pendingClose=false;if(tab==='My List'){var oldId=returnFocus&&returnFocus.dataset.item;render();focus(main.querySelector('[data-item="'+oldId+'"]')||nav.querySelector('.active'));}else focus(returnFocus);},motion?170:0);}
+  function closeDialog(){if(!preview&&!localShell&&detailsMode){history.back();return;}if(!dialog||pendingClose)return;pendingClose=true;var d=dialog;d.classList.add('closing');setTimeout(function(){d.remove();dialog=null;detailItem=null;pendingClose=false;if(tab==='My List'){var oldId=returnFocus&&returnFocus.dataset.item;render();focus(main.querySelector('[data-item="'+oldId+'"]')||nav.querySelector('.active'));}else focus(returnFocus);},motion?170:0);}
   function choice(title,values,selected,fn){var wrap=startDialog(title);wrap.appendChild(node('h1','',title));var choices=node('div','filters');choices.style.marginTop='40px';values.forEach(function(v){var r=row(choices,'choice-row');r.appendChild(button((v===selected?'✓ ':'')+v,function(){var old=returnFocus;dialog.remove();dialog=null;detailItem=null;fn(v);if(!document.activeElement||!host.contains(document.activeElement))focus(old);},'solid'));});wrap.appendChild(choices);focus(list(choices,'button').filter(function(b){return b.textContent.indexOf('✓ ')===0;})[0]||choices.querySelector('button'));}
   function showDetail(item,from){
+    if(!preview&&(localShell||!sourceTitle()||itemKey(sourceTitle())!==itemKey(item))){rememberView(item);location.assign(watchURL(item.url).split('#')[0]+'#ftv-details');return;}
     detailItem=item;var wrap=startDialog(item.title,from);detailItem=item;var top=node('div','detail-hero'),im=node('img','detail-poster');im.src=item.image;im.alt=item.title;im.onerror=function(){im.style.display='none';};var body=node('div','detail-info');append(body,node('p','eyebrow',tv(item)?'SERIES':'MOVIE'),node('h1','',item.title),meta(item));if(item.reason)body.appendChild(node('p','recommendation-reason',item.reason));var description=node('p','muted',item.description||(tv(item)?'Choose a season and episode, or open this series on FlixTor.':'Open this movie in the existing FlixTor player.'));body.appendChild(description);var a=row(body,'actions');
     a.appendChild(button(episode(item)?'▶ Play episode':tv(item)?'▶ Choose episodes':'▶ Play on FlixTor',function(){if(tv(item)&&!episode(item)){var ep=wrap.querySelector('.season-row button');if(ep)focus(ep);else openTitle(item);}else openTitle(item);},'primary'));
     var save=button(!preview&&!nativeFavorite(item)?'Manage My List on FlixTor':favorite(item)?'✓ In My List':'+ My List',function(){saveFavorite(item,save);});save.setAttribute('aria-pressed',String(favorite(item)));a.appendChild(save);a.appendChild(button('More like this',function(){dialog.remove();dialog=null;detailItem=null;showSimilar(item);}));append(top,im,body);wrap.appendChild(top);
@@ -222,9 +231,9 @@
   }
   function readEpisodes(){return list(document,'.eplist[data-pes][data-pep]').map(function(e){return {season:Number(e.getAttribute('data-pes')),number:Number(e.getAttribute('data-pep')),title:textAt(e,'.epTitle'),date:textAt(e,'td.nowrap .hidden-lg-down'),native:e};});}
   function seasonChooser(wrap,item,episodes){wrap.appendChild(node('h2','','Episodes'));var seasons=[];episodes.forEach(function(e){if(seasons.indexOf(e.season)===-1)seasons.push(e.season);});seasons.sort(function(a,b){return a-b;});activeSeason=seasons[0];var seasonRow=row(wrap,'season-row'),episodeBox=node('div','episodes');
-    function draw(){episodeBox.textContent='';episodeBox.classList.remove('pane-enter');void episodeBox.offsetWidth;episodeBox.classList.add('pane-enter');list(seasonRow,'button').forEach(function(b){b.classList.toggle('chosen',Number(b.dataset.season)===activeSeason);b.setAttribute('aria-pressed',String(Number(b.dataset.season)===activeSeason));});episodes.filter(function(e){return e.season===activeSeason;}).sort(function(a,b){return a.number-b.number;}).forEach(function(ep){var r=row(episodeBox,'episode-row'),b=button('',function(){if(preview){toast('Episode selected · playback is available in live FlixTor mode.');return;}if(ep.native){rememberView(item);showOriginal();ep.native.click();}else openTitle(item);},'episode');b.setAttribute('aria-label','Episode '+ep.number+': '+ep.title);append(b,node('span','episode-num',String(ep.number).padStart(2,'0')),node('span','episode-title',ep.title),node('span','episode-date',ep.date||''),node('span','playmark','▶'));r.appendChild(b);});}
+    function draw(){episodeBox.textContent='';episodeBox.classList.remove('pane-enter');void episodeBox.offsetWidth;episodeBox.classList.add('pane-enter');list(seasonRow,'button').forEach(function(b){b.classList.toggle('chosen',Number(b.dataset.season)===activeSeason);b.setAttribute('aria-pressed',String(Number(b.dataset.season)===activeSeason));});episodes.filter(function(e){return e.season===activeSeason;}).sort(function(a,b){return a.number-b.number;}).forEach(function(ep){var r=row(episodeBox,'episode-row'),b=button('',function(){if(preview){toast('Episode selected · playback is available in live FlixTor mode.');return;}if(ep.native){rememberView(item);startPlayback();ep.native.click();}else openTitle(item);},'episode');b.setAttribute('aria-label','Episode '+ep.number+': '+ep.title);append(b,node('span','episode-num',String(ep.number).padStart(2,'0')),node('span','episode-title',ep.title),node('span','episode-date',ep.date||''),node('span','playmark','▶'));r.appendChild(b);});}
     seasons.forEach(function(s){var b=button('Season '+s,function(){activeSeason=s;draw();},'chip');b.dataset.season=String(s);seasonRow.appendChild(b);});wrap.appendChild(episodeBox);draw();}
-  function openTitle(item){var u=watchURL(item.url);if(u){rememberView(item);location.assign(u+(localShell?'#ftv-return':''));}}
+  function openTitle(item){var u=watchURL(item.url);if(u){rememberView(item);if(!localShell&&detailsMode&&!tv(item)){startPlayback();return;}location.assign(u.split('#')[0]+'#ftv-play');}}
   function syncSettings(){if(localShell){location.assign(siteRoute('/mylists/favorites')+'#ftv-original');return;}if(!preview){showOriginal();var input=document.querySelector('#syncCodeInput')||document.querySelector('input[placeholder="Enter Sync Code"]');if(input)input.focus();else location.assign('/mylists/favorites');return;}var wrap=startDialog('FlixTor Sync');append(wrap,node('p','eyebrow','YOUR LIST, EVERYWHERE'),node('h1','','FlixTor Sync'),node('p','notice','Live mode uses the existing FlixTor Favorites and player actions.'));var p=node('p','muted','FlixTor’s help describes a Sync Code that backs up Favorites and viewing progress and shares them between devices. Configure the same existing code on the TV and your other devices. This preview never asks for your code.');p.style.maxWidth='800px';p.style.marginTop='28px';wrap.appendChild(p);focus(wrap.querySelector('button'));}
   function nativeSearch(){
     if(localShell){location.assign(siteRoute('/home')+'#ftv-search');return;}
@@ -254,7 +263,7 @@
   function originalFocus(e){if(!e)return;try{e.focus({preventScroll:true});}catch(_){e.focus();}try{e.scrollIntoView({block:'nearest',inline:'nearest'});}catch(_){} }
   function returnToTV(){
     if(!localShell&&/^\/vipsignin/.test(location.pathname)){location.assign(siteRoute('/home'));return;}
-    if(!localShell&&/^\/watch\//.test(location.pathname)&&(location.hash==='#ftv-return'||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){history.back();return;}
+    if(!localShell&&/^\/watch\//.test(location.pathname)&&((location.hash==='#ftv-return'||location.hash==='#ftv-play')||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){history.back();return;}
     closeOriginalKeyboard();try{sessionStorage.removeItem('ftv.original.v1');}catch(_){}
     document.body.classList.remove('ftv-native');if(originalBar){originalBar.remove();originalBar=null;}
     host.style.display='block';refreshCards();if(!localShell&&location.hostname==='flixtor.to'&&!/^\/watch\//.test(location.pathname)){try{sessionStorage.removeItem('ftv.original.v1');}catch(_){}sourceHandoff();return;}render();focus(nav.querySelector('.active'));
@@ -290,14 +299,14 @@
   }
   function showOriginal(){
     if(localShell){location.assign((shellSnapshot.href||siteRoute(shellSnapshot.path))+'#ftv-original');return;}
-    if(dialog){dialog.remove();dialog=null;detailItem=null;}host.style.display='none';document.body.classList.add('ftv-native');
+    if(dialog){dialog.remove();dialog=null;detailItem=null;}host.style.display='none';uncoverSource();document.body.classList.add('ftv-native');
     try{sessionStorage.setItem('ftv.original.v1','1');}catch(_){}
     if(!originalBar){originalBar=node('div');originalBar.id='ftv-native-bar';append(originalBar,button('Return to TV view',returnToTV),button('VIP login',openVIPLogin),node('span','','Arrows: move · OK: select/type · Back: return'));document.body.appendChild(originalBar);}
     originalFocus(originalBar.querySelector('button'));
   }
-  function back(){if(dialog){if(!localShell&&/^\/watch\//.test(location.pathname)&&(location.hash==='#ftv-return'||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){history.back();return;}closeDialog();return;}if(tab!=='Home'){gotoRoute('Home');return;}choice('Leave TV view?',['Keep browsing','Open original site'],'Keep browsing',function(v){if(v==='Open original site')showOriginal();else focus(nav.querySelector('.active'));});}
+  function back(){if(dialog){if(!localShell&&/^\/watch\//.test(location.pathname)&&((location.hash==='#ftv-return'||location.hash==='#ftv-play')||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){history.back();return;}closeDialog();return;}if(tab!=='Home'){gotoRoute('Home');return;}choice('Leave TV view?',['Keep browsing','Open original site'],'Keep browsing',function(v){if(v==='Open original site')showOriginal();else focus(nav.querySelector('.active'));});}
   function directional(e){
-    if(!host||pendingClose)return;if(host.style.display==='none'){originalDirectional(e);return;}var code=e.keyCode,key=e.key;var dir={37:'left',38:'up',39:'right',40:'down'}[code]||{ArrowLeft:'left',ArrowUp:'up',ArrowRight:'right',ArrowDown:'down'}[key];var current=document.activeElement,scope=dialog||host;
+    if(!host||pendingClose||playbackActive)return;if(host.style.display==='none'){originalDirectional(e);return;}var code=e.keyCode,key=e.key;var dir={37:'left',38:'up',39:'right',40:'down'}[code]||{ArrowLeft:'left',ArrowUp:'up',ArrowRight:'right',ArrowDown:'down'}[key];var current=document.activeElement,scope=dialog||host;
     function handled(){e.preventDefault();e.stopImmediatePropagation();}
     if(code===10009||key==='Escape'||key==='BrowserBack'){handled();back();return;}
     if(current&&scope.contains(current)&&current.tagName==='INPUT'){if((code===13||key==='Enter')&&current.classList.contains('search-input')){handled();runCatalogueSearch();return;}if(dir==='down'){handled();focus(main.querySelector('.keyboard button')||main.querySelector('.card'));}else if(dir==='up'){handled();focus(nav.querySelector('.active'));}return;}
@@ -319,7 +328,8 @@
     var r=current.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,best=null,bestScore=Infinity;
     candidates.forEach(function(c){if(c===current||(!dialog&&nav.contains(c)))return;var t=c.getBoundingClientRect(),dx=t.left+t.width/2-x,dy=t.top+t.height/2-y,primary=dir==='up'?-dy:dir==='down'?dy:dir==='left'?-dx:dx,cross=(dir==='up'||dir==='down')?Math.abs(dx):Math.abs(dy);if(primary<8)return;var score=primary+cross*2.7;if(score<bestScore){bestScore=score;best=c;}});if(best)focus(best);else if(dir==='left'&&!dialog)focus(nav.querySelector('.active'));
   }
-  function sourceTitle(){var im=document.querySelector('img[alt="Poster Image"]'),header=document.querySelector('.watch-header[data-href]');if(!im||!header)return null;var u=watchURL(header.getAttribute('data-href'));if(!u)return null;return {title:im.getAttribute('data-txt')||header.textContent.replace(/\(\d{4}\)/,'').trim(),year:(header.textContent.match(/\((\d{4})\)/)||[])[1]||'',meta:'',image:im.getAttribute('src'),url:u,description:textAt(document,'.moreless-content')};}
+  function titleRating(){var rated=document.querySelector('[title^="Rated "]');var match=rated&&(rated.getAttribute('title')||'').match(/Rated\s+([\d.]+)/);return match?match[1]:'';}
+  function sourceTitle(){var im=document.querySelector('img[alt="Poster Image"]'),header=document.querySelector('.watch-header[data-href]');if(!im||!header)return null;var u=watchURL(header.getAttribute('data-href'));if(!u)return null;return {title:im.getAttribute('data-txt')||header.textContent.replace(/\(\d{4}\)/,'').trim(),year:(header.textContent.match(/\((\d{4})\)/)||[])[1]||'',meta:'',image:im.getAttribute('src'),url:u,description:textAt(document,'.moreless-content'),rating:titleRating(),certification:textAt(document,'[title="US Content Rating"]')};}
   function mount(){
     var style=node('style');style.textContent=FTV_STYLE;document.head.appendChild(style);host=node('div');host.id='ftv';var side=node('aside','sidebar'),brand=node('div','brand','flix');brand.appendChild(node('span','','tor'));append(side,brand,node('p','brand-note','THE TV EXPERIENCE'));nav=node('nav');nav.setAttribute('aria-label','Main');Object.keys(icons).forEach(function(name){var b=button('',function(){gotoRoute(name);});b.dataset.tab=name;b.setAttribute('aria-label',name);append(b,node('span','navicon',icons[name]),node('span','',name));nav.appendChild(b);});side.appendChild(nav);var bottom=node('div','sidebar-bottom');append(bottom,button('⇄  Sync settings',syncSettings),button('VIP login',openVIPLogin),button('↗  Original site',showOriginal),node('p','connection',(preview?'○ Preview mode':'● FlixTor session')+'\nTV interface '+FTV_VERSION));side.appendChild(bottom);host.appendChild(side);
     stage=node('div','stage');var top=node('header','topbar'),right=node('div','topbar-right');append(top,node('span','topbar-text',preview?'A better seat for every story.':'Your FlixTor session · your existing lists'));append(right,node('span','version','TIZENBREW / '+FTV_VERSION),button('⇄ Sync',syncSettings));top.appendChild(right);stage.appendChild(top);main=node('main');stage.appendChild(main);host.appendChild(stage);footer=node('footer','footer');append(footer,node('span','','↑ ↓ ← →  Move     ·     OK  Select     ·     Back  Return'),node('span','',preview?'Preview collection':'FlixTor storage'));host.appendChild(footer);document.body.appendChild(host);document.addEventListener('keydown',directional,true);render();focus(main.querySelector('button')||nav.querySelector('.active'),false);
@@ -327,24 +337,55 @@
     var restored=savedView();if(restored&&restored.path===sourcePath()){tab=restored.tab;genre=restored.genre||'All genres';sort=restored.sort||'Featured';query=restored.query||'';render();list(main,'.rail').forEach(function(r,i){r.scrollLeft=(restored.rails||[])[i]||0;});stage.scrollTop=restored.top||0;focus(main.querySelector('[data-item="'+restored.item+'"]')||main.querySelector('button'),false);}
     try{var filterFocus=JSON.parse(sessionStorage.getItem('ftv.filterFocus.v1')||'null');if(filterFocus&&filterFocus.path===sourcePath()){sessionStorage.removeItem('ftv.filterFocus.v1');focus(main.querySelector('[data-filter-key="'+filterFocus.key+'"]')||main.querySelector('.filters button'),false);}}catch(_){}
     if(connectRecommendations){sharePublicCatalogue();loadRecommendations();}
-    var title=!preview&&/^\/watch\/tv\/\d+\/[^/]+\/?$/.test(location.pathname)?sourceTitle():null;if(title)showDetail(title,nav.querySelector('button'));
+    var title=!preview&&/^\/watch\//.test(location.pathname)?sourceTitle():null;if(title)showDetail(title,nav.querySelector('button'));uncoverSource();
     if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(changes.every(function(c){return host.contains(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
   }
   function boot(){
+    if(!explicitOriginal){try{sessionStorage.removeItem('ftv.original.v1');}catch(_){}}
     // Playback stays with FlixTor so its progress/sync behavior remains authoritative.
-    if(!preview&&!explicitOriginal&&(/^\/watch\/movie\//.test(location.pathname)||/\/season\/\d+\/episode\/\d+/.test(location.pathname))){playbackKeys();return;}
+    if(!preview&&!explicitOriginal&&location.hash!=='#ftv-details'&&(/^\/watch\/movie\//.test(location.pathname)||/\/season\/\d+\/episode\/\d+/.test(location.pathname))){startPlayback();return;}
+    if(detailsMode){var detailVideo=document.querySelector('video');if(detailVideo)detailVideo.pause();}
     if(!preview){if(sourcePath().indexOf('/show/movies')===0)tab='Movies';else if(sourcePath().indexOf('/show/tvshows')===0)tab='Series';else if(sourcePath().indexOf('/mylists/favorites')===0)tab='My List';else if(sourcePath().indexOf('/mylists/watched')===0)tab='Watching';else if(sourcePath().indexOf('/mylists/recommendations')===0)tab='For You';}
     if(/^\/vipsignin\/?$/.test(location.pathname)){refreshCards();mount();showOriginal();var loginFields=originalTargets().filter(function(e){return e.tagName==='INPUT'&&!e.readOnly&&!/^(checkbox|radio|hidden|submit|button)$/i.test(e.type||'');});if(loginFields.length)editOriginalField(loginFields[0]);return;}
     if(fullSearchPage()){tab='Search';query=searchedQuery();}
     refreshCards();
     var handoff=!preview&&!localShell&&!explicitOriginal&&location.hostname==='flixtor.to'&&!/^\/watch\//.test(location.pathname);
     function ready(){if(handoff)sourceHandoff();else{mount();if(explicitOriginal){showOriginal();if(location.hash==='#ftv-search')nativeSearch();}}}
-    if(!preview&&!all.length&&!sourceTitle()&&!localShell){var attempt=0,timer=setInterval(function(){refreshCards();if(all.length||++attempt===12){clearInterval(timer);ready();}},400);}else ready();
+    if(!preview&&!all.length&&!sourceTitle()&&!localShell){var done=false,observer,timer;function checkReady(force){refreshCards();if(!done&&(all.length||sourceTitle()||force)){done=true;clearTimeout(timer);if(observer)observer.disconnect();ready();}}if(window.MutationObserver){observer=new MutationObserver(function(){checkReady(false);});observer.observe(document.body,{childList:true,subtree:true});}timer=setTimeout(function(){checkReady(true);},4800);checkReady(false);}else ready();
   }
+  var playbackActive=false,playbackTimer=null;
+  function startPlayback(){
+    playbackActive=true;uncoverSource();
+    if(host)host.style.display='none';
+    if(dialog){dialog.remove();dialog=null;detailItem=null;}
+    if(originalBar)originalBar.style.display='none';
+    var style=document.getElementById('ftv-cinema-style');
+    if(!style){style=node('style');style.id='ftv-cinema-style';style.textContent='html.ftv-cinema,html.ftv-cinema body{background:#000!important;overflow:hidden!important}html.ftv-cinema #playerwrapper{position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100vw!important;height:100vh!important;padding:0!important;margin:0!important;z-index:2147483100!important;background:#000!important}html.ftv-cinema #playercontainer,html.ftv-cinema #player{width:100%!important;height:100%!important}html.ftv-cinema #ftv-original-bar{display:none!important}';document.head.appendChild(style);}
+    document.documentElement.classList.add('ftv-cinema');
+    var attempts=0,qualityPicked=false,videoStarted=false;
+    clearInterval(playbackTimer);
+    function enhance(){
+      var video=document.querySelector('#player video, #playerwrapper video');
+      if(video&&!videoStarted){videoStarted=true;var promise=video.play();if(promise&&promise.catch)promise.catch(function(){});}
+      if(!qualityPicked&&video&&video.readyState>=2&&typeof window.jwplayer==='function'){
+        qualityPicked=FTV_PLAYER.preferHighest(window.jwplayer('player'));
+      }
+      if(++attempts>=80||videoStarted&&qualityPicked)clearInterval(playbackTimer);
+    }
+    enhance();playbackTimer=setInterval(enhance,250);playbackKeys();
+  }
+  var playbackKeysInstalled=false;
   function playbackKeys(){
+    if(playbackKeysInstalled)return;playbackKeysInstalled=true;
+
     document.addEventListener('keydown',function(e){
+      if(!playbackActive)return;
       var code=e.keyCode,key=e.key,view=savedView();
-      if((code===10009||key==='Escape')&&(location.hash==='#ftv-return'||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){e.preventDefault();e.stopImmediatePropagation();history.back();return;}
+      if((code===10009||key==='Escape')&&detailsMode){
+        e.preventDefault();e.stopImmediatePropagation();playbackActive=false;clearInterval(playbackTimer);var currentVideo=document.querySelector('video');if(currentVideo)currentVideo.pause();document.documentElement.classList.remove('ftv-cinema');if(host){host.style.display='block';showDetail(sourceTitle(),nav.querySelector('button'));}return;
+      }
+
+      if((code===10009||key==='Escape')&&((location.hash==='#ftv-return'||location.hash==='#ftv-play')||document.referrer.indexOf('http://127.0.0.1:8767/')===0)){e.preventDefault();e.stopImmediatePropagation();history.back();return;}
       if((code===10009||key==='Escape')&&view&&/^\/(home|show\/|mylists\/|watch\/tv\/)/.test(view.path)){e.preventDefault();e.stopImmediatePropagation();location.assign(view.path);return;}
       var video=document.querySelector('video');if(!video)return;
       var active=document.activeElement,inControls=active&&active.closest&&active.closest('button,a,input,select,[role="button"]');
@@ -353,5 +394,7 @@
       if(action==='play'||(action==='toggle'&&video.paused)){var play=video.play();if(play&&play.catch)play.catch(function(){});}else if(action==='pause'||action==='toggle')video.pause();else if(isFinite(video.duration))video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+(action==='forward'?10:-10)));
     },true);
   }
+  document.addEventListener('play',function(e){if(detailsMode&&!playbackActive&&e.target.tagName==='VIDEO')e.target.pause();},true);
+  coverSource();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }());
