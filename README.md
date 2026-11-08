@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.4`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.1.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.5`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.5.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.4` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.5` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -110,3 +110,9 @@ The player gear opens remote-friendly subtitle and quality controls, including S
 The v2 recommendation relay listens on Mac port 8772, allowing only loopback and the configured TV. TizenBrew uses its loopback bridge on 8770; desktop browser testing uses loopback 8771. The previous services can continue supporting old installed bundles until they are retired. Start the updated relay using backend/Start_Recommendations.command. Gorse remains private on loopback 8088.
 
 See backend/RECOMMENDATION_CAPABILITIES.md for enabled features and model limitations.
+
+### 0.3.5: quiet player controls and screen protection
+
+Settings fades after four idle seconds; Up brings it back. Open menus close after twelve idle seconds. Selecting subtitles or quality dismisses the menu. Playback requests Samsung AppCommon screensaver suppression when available, with a browser screen-wake-lock fallback. Pause, end, exit, hiding the app, or a frozen frame lasting 45 seconds restores protection. Samsung availability and actual screensaver behavior require a physical TV check.
+
+For You also includes a resumable public-synopsis collector. It uses native information popups, never watch pages, and saves descriptions privately on the Mac. Batches update a local shadow embedding index; semantic ranking is not switched on automatically. See backend/SEMANTIC_UPGRADE.md.
