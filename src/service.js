@@ -20,14 +20,15 @@
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
     var catalogue = req.method === 'POST' && req.url === '/catalogue';
     var feedback = req.method === 'POST' && req.url === '/feedback';
-    if (!catalogue && !feedback && (req.method !== 'GET' || req.url !== '/recommendations')) { res.writeHead(404); res.end(); return; }
+    var plots = req.url === '/plots' && (req.method === 'POST' || req.method === 'GET');
+    if (!catalogue && !feedback && !plots && (req.method !== 'GET' || req.url !== '/recommendations')) { res.writeHead(404); res.end(); return; }
     var finished = false;
     function finish(code, value) {
       if (finished) return; finished = true;
       res.writeHead(code, {'Content-Type': 'application/json'}); res.end(value);
     }
     function forward(body) {
-    var remote = http.request({hostname: relayHost, port: 8772, path: catalogue ? '/catalogue' : feedback ? '/feedback' : '/recommendations', method: catalogue || feedback ? 'POST' : 'GET', headers: catalogue || feedback ? {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)} : {}}, function (upstream) {
+    var remote = http.request({hostname: relayHost, port: 8772, path: catalogue ? '/catalogue' : feedback ? '/feedback' : plots ? '/plots' : '/recommendations', method: req.method, headers: req.method === 'POST' ? {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)} : {}}, function (upstream) {
       var body = '';
       upstream.on('data', function (part) { body += part; if (body.length > 150000) { remote.abort(); finish(502, '{"error":"Response too large"}'); } });
       upstream.on('end', function () { finish([200,202,400,413,415].indexOf(upstream.statusCode)>=0 ? upstream.statusCode : 503, body); });
@@ -37,7 +38,7 @@
     remote.on('error', function () { finish(503, '{"error":"Start the recommendation relay on the Mac"}'); });
     remote.end(body);
     }
-    if (catalogue || feedback) {
+    if (req.method === 'POST') {
       var body = '';
       req.on('data', function (part) { body += part; if (Buffer.byteLength(body) > 100000) { finish(413, '{}'); req.destroy(); } });
       req.on('end', function () { if (!finished) forward(body); });
