@@ -2,32 +2,59 @@
 """LAN recommendation relay with public catalogue ingestion. Gorse itself remains on loopback.
 Only the configured TV and this Mac may connect. No arbitrary proxy/admin routes.
 """
-import re, argparse, json, urllib.request, urllib.error, threading, subprocess, sys, time, os
+import re, argparse, json, math, urllib.request, urllib.error, threading, subprocess, sys, time, os
+from datetime import datetime,timezone
+from feedback import FeedbackStore
+from recommendation_features import vector
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 from personalize import catalogue
 
-def recommendation_payload(data_dir):
-    root=Path(data_dir)
-    items=json.loads((root/'catalogue.json').read_text())
-    matched=json.loads((root/'matches.json').read_text())
-    profile=matched['profile']
-    with urllib.request.urlopen('http://127.0.0.1:8088/api/recommend/'+quote(profile,safe='')+'/playable?n=48',timeout=8) as res:
-        ids=json.load(res)
-    seen=set(matched['seen']); seeds=matched['seeds']; seed_ids={s['item']['id'] for s in seeds}
+def recommendation_payload(data_dir,feedback=None):
+    root=Path(data_dir);items=json.loads((root/'catalogue.json').read_text());matched=json.loads((root/'matches.json').read_text())
+    profile=matched['profile'];feedback=feedback or FeedbackStore(root);feedback.sync();states=feedback.states()
+    with urllib.request.urlopen('http://127.0.0.1:8088/api/recommend/'+quote(profile,safe='')+'/playable?n=256',timeout=8) as res:ids=json.load(res)
+    seen=set(matched['seen']);seeds=matched['seeds'];seed_ids={s['item']['id'] for s in seeds}
+    feature_file=root/'recommendation-features.json';features=json.loads(feature_file.read_text()) if feature_file.exists() else {}
+    now=datetime.now(timezone.utc);packs=[]
+    for seed in seeds:
+        item=seed['item'];weight=3 if seed.get('feedback_type')=='like' else .35 if 'watchlist' in seed.get('source','') else 1
+        try:days=max(0,(now-datetime.fromisoformat(seed['at'].replace('Z','+00:00'))).days);weight*=.3+.7*math.exp(-days/730)
+        except (ValueError,KeyError):pass
+        packs.append((item,weight,features.get(item['id'],{})))
+    for ident,state in states.items():
+        if state['preference']=='like' and ident in items:packs.append((items[ident],4,features.get(ident,{})))
+        if (state['watched'] is False or state['preference']=='like' and state['watched'] is not True) and ident in items and ident not in ids:ids.append(ident)
+    def similarity(item,feature,seed,sf):
+        x=set(item['genres']);y=set(seed['genres']);genre=len(x&y)/max(1,len(x|y))
+        va=feature.get('metadata_vector') or vector(item);vb=sf.get('metadata_vector') or vector(seed)
+        content=sum(a*b for a,b in zip(va,vb));a=set(feature.get('creators',[]));b=set(sf.get('creators',[]))
+        creator=len(a&b)/max(1,len(a|b))
+        return .45*genre+.35*content+.2*creator
+    negatives=[items[ident] for ident,state in states.items() if state['preference']=='dislike' and ident in items]
+    candidates=[]
+    for rank,ident in enumerate(dict.fromkeys(ids)):
+        if ident not in items:continue
+        state=states.get(ident,{})
+        if state.get('preference')=='dislike' or state.get('watched') is True:continue
+        if state.get('watched') is not False and (ident in seen or ident in seed_ids):continue
+        item=dict(items[ident]);feat=features.get(ident,{})
+        scores=[(weight*similarity(item,feat,seed,sf),seed) for seed,weight,sf in packs]
+        scores.sort(key=lambda pair:pair[0],reverse=True)
+        score=sum(value for value,seed in scores[:8])/8 + .2/(1+rank/20)
+        score-=.22*max((similarity(item,feat,negative,features.get(negative['id'],{})) for negative in negatives),default=0)
+        if scores:
+            seed=scores[0][1];item['reason']='Shares genres, era or creators with '+seed['title']
+        else:item['reason']='Explore something from the catalogue'
+        if state.get('watched') is False:item['reason']='You marked this as not watched · '+item['reason']
+        item['feedback']=state;item['rating']=feat.get('rating','');candidates.append((score,item))
     output=[]
-    for item_id in ids:
-        if item_id not in items or item_id in seen or item_id in seed_ids:continue
-        item=dict(items[item_id]);genres=set(item['genres'])
-        ranked=sorted(seeds,key=lambda s:len(genres.intersection(s['item']['genres']))/max(1,len(genres.union(s['item']['genres']))),reverse=True)
-        if ranked:
-            seed=ranked[0]; overlap=sorted(genres.intersection(seed['item']['genres']))
-            if overlap:item['reason']='Similar genres to '+seed['item']['title']+' · '+', '.join(overlap[:2])
-        output.append(item)
-        if len(output)>=24:break
-    return {'engine':'gorse','scope':'Amazon import · household profile unassigned',
-            'seedCount':len(seeds),'catalogueCount':len(items),'items':output}
+    while candidates and len(output)<24:
+        best=max(range(len(candidates)),key=lambda n:candidates[n][0]-.24*max((similarity(candidates[n][1],features.get(candidates[n][1]['id'],{}),old,features.get(old['id'],{})) for old in output[-8:]),default=0))
+        output.append(candidates.pop(best)[1])
+    return {'engine':'gorse','scope':'Amazon import · household profile unassigned','model':'Genres + content metadata + creators; explicit feedback, recency and diversity' if features else 'Genres + your feedback; recency and diversity',
+            'seedCount':len(seeds),'catalogueCount':len(items),'items':output,'feedbackPending':sum(s['syncPending'] for s in states.values())}
 
 class CatalogueSync:
     """Accept public card metadata, then match history locally. No raw history input."""
@@ -70,22 +97,27 @@ class CatalogueSync:
                     self.scheduled=True;timer=threading.Timer(3,self.run);timer.daemon=True;timer.start()
 
 def handler(data_dir,allowed,sync=None):
+    feedback=FeedbackStore(data_dir)
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
-            if self.path!='/catalogue' or sync is None:self.send_error(404);return
+            if self.path not in ['/catalogue','/feedback'] or (self.path=='/catalogue' and sync is None):self.send_error(404);return
+            origin=self.headers.get('Origin')
+            if origin and not re.fullmatch(r'http://(?:127\.0\.0\.1|localhost):(?:8765|8770|8771)',origin):self.send_error(403);return
+            if self.headers.get_content_type()!='application/json':self.send_error(415);return
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=100000:self.send_error(413);return
-                added=sync.add(json.loads(self.rfile.read(length)))
+                payload=json.loads(self.rfile.read(length))
+                result={'accepted':sync.add(payload)} if self.path=='/catalogue' else {'saved':True,'state':feedback.save(payload)}
             except (ValueError,OSError,TypeError):self.send_error(400);return
-            body=json.dumps({'accepted':added}).encode();self.send_response(202)
+            body=json.dumps(result).encode();self.send_response(202 if self.path=='/catalogue' else 200)
             self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         def do_GET(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
             if self.path not in ['/recommendations','/health']:self.send_error(404);return
             try:
-                payload={'ready':True} if self.path=='/health' else recommendation_payload(data_dir)
+                payload={'ready':True} if self.path=='/health' else recommendation_payload(data_dir,feedback)
                 body=json.dumps(payload).encode();self.send_response(200)
             except (OSError,ValueError,KeyError,urllib.error.URLError):
                 body=b'{"error":"Recommendation service is unavailable. Check Gorse on the Mac."}';self.send_response(503)
@@ -95,7 +127,7 @@ def handler(data_dir,allowed,sync=None):
     return Handler
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--db');p.add_argument('--tv-ip',required=True);p.add_argument('--bind',default='0.0.0.0');p.add_argument('--port',type=int,default=8766);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--db');p.add_argument('--tv-ip',required=True);p.add_argument('--bind',default='0.0.0.0');p.add_argument('--port',type=int,default=8772);a=p.parse_args()
     server=ThreadingHTTPServer((a.bind,a.port),handler(a.data,{'127.0.0.1',a.tv_ip},CatalogueSync(a.data,a.db) if a.db else None))
     print('TV recommendation relay on port '+str(a.port),flush=True);server.serve_forever()
 if __name__=='__main__':main()

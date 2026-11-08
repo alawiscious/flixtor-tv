@@ -25,6 +25,15 @@ class PersonalizationTests(unittest.TestCase):
             c.executemany('insert into sessions values (?,?,?,?)',[('x','Pilot',1800,'2020-01-01T00:00:00Z'),('y','Fight Club',1800,'2020-01-01T00:00:00Z')]);c.commit();c.close()
             seeds,seen,review=match_history(p,self.items)
             self.assertEqual(set(seeds),{'flixtor:movie:3'});self.assertEqual(set(seen),{'flixtor:movie:3'})
+    def test_watch_summary_recovers_missing_title_without_adding_durations(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'test.db';c=sqlite3.connect(p)
+            c.executescript('create table watchlist(item_id,title,added_at,deleted); create table sessions(item_id,title,seconds_viewed,started_at); create table watch_summaries(item_id,title,seconds_watched,last_watched_at,deleted);')
+            c.execute('insert into sessions values (?,?,?,?)',('x','Fight Club',700,'2020-01-01T00:00:00Z'))
+            c.executemany('insert into watch_summaries values (?,?,?,?,?)',[('x','Fight Club',700,'2020-01-01T00:00:00Z',0),('y','Fleabag Season 1',1800,'2020-01-01T00:00:00Z',0),('z','Pilot',1800,'2020-01-01T00:00:00Z',0)]);c.commit();c.close()
+            seeds,seen,review=match_history(p,self.items)
+            self.assertEqual(set(seeds),{'flixtor:tv:1'})
+            self.assertEqual(set(seen),{'flixtor:tv:1','flixtor:movie:3'})
     def test_catalogue_ingestion_only_accepts_public_card_schema(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d);(p/'catalogue.json').write_text('{}')
@@ -45,7 +54,7 @@ class PersonalizationTests(unittest.TestCase):
             with patch('urllib.request.urlopen',return_value=Response()):
                 result=recommendation_payload(p)
             self.assertEqual([i['id'] for i in result['items']],['flixtor:tv:2'])
-            self.assertIn('Similar genres',result['items'][0]['reason'])
+            self.assertIn('Shares genres',result['items'][0]['reason'])
             self.assertNotIn('seeds',result)
 
 if __name__=='__main__':unittest.main()
