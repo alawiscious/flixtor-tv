@@ -8,7 +8,7 @@ tabs, browser-history, cookies API, or access to other websites.
 Keep the browser service running on this Mac:
 
 ```sh
-FTV_RELAY_HOST=127.0.0.1 node service.js
+FTV_PORT=8771 FTV_RELAY_HOST=127.0.0.1 node service.js
 ```
 
 The recommendation relay and Gorse must also be running for For You. Existing
@@ -24,4 +24,4 @@ test.
 Run `node build.cjs` after code changes, then reload the extension in Chrome.
 Remove the extension in Chrome's extension manager when finished testing.
 
-The Chrome helper hands off to `FlixTor_TV_Live.html` on the loopback preview server at port 8765. Start that server with `python3 -m http.server 8765 --bind 127.0.0.1` in the repository root. Rebuilding updates the browser UI on the next page load. The API bridge and TV module use port 8767.
+The Chrome helper hands off to `FlixTor_TV_Live.html` on the loopback preview server at port 8765. Start that server with `python3 -m http.server 8765 --bind 127.0.0.1` in the repository root. Rebuilding updates the browser UI on the next page load. The desktop API bridge uses port 8771; the TV module uses its own loopback service on port 8770.
