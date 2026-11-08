@@ -1,7 +1,7 @@
 /* Public synopsis collection. Only native information popups are fetched;
  * never load a player or copy account/session credentials to the Mac. */
 var FTV_PLOTS=(function(){
-  var shell='http://127.0.0.1:8770/tv';
+  var shell=(window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/tv';
   function key(text){return String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
   function parse(html,item){
     var doc=new DOMParser().parseFromString(html,'text/html');
