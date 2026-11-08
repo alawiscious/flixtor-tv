@@ -13,7 +13,7 @@
 | Collaborative matrix factorization | Not enabled | Needs multiple independent real profiles with overlapping feedback |
 | User-to-user similarity | Not enabled | One household profile cannot establish useful neighbours |
 | Gorse FM learned ranker | Not enabled | Needs meaningful positive and negative labels and evaluation before promotion |
-| Neural plot/semantic matching or LLM reranking | Not enabled | Needs plot data, a local model or an approved API; no viewing history is sent to an external model |
+| Neural plot/semantic matching or LLM reranking | Not serving | Private shadow-index preparation is available; needs local model installation, unseen candidate plot coverage and validation. See SEMANTIC_UPGRADE.md. No viewing history is sent to an external model |
 
 Gorse enables genre, metadata embedding and creator indexes. Its untrained ranker configuration permits one serving candidate source, so metadata is the primary source and the local relay blends the additional evidence. We do not enable an untrained FM model merely to select multiple recommenders.
 

@@ -5,6 +5,7 @@ Only the configured TV and this Mac may connect. No arbitrary proxy/admin routes
 import re, argparse, json, math, urllib.request, urllib.error, threading, subprocess, sys, time, os
 from datetime import datetime,timezone
 from feedback import FeedbackStore
+from plots import PlotStore,ShadowIndexer
 from recommendation_features import vector
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -98,10 +99,12 @@ class CatalogueSync:
 
 def handler(data_dir,allowed,sync=None):
     feedback=FeedbackStore(data_dir)
+    plots=PlotStore(data_dir)
+    indexer=ShadowIndexer(data_dir,sync.db if sync else None)
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
-            if self.path not in ['/catalogue','/feedback'] or (self.path=='/catalogue' and sync is None):self.send_error(404);return
+            if self.path not in ['/catalogue','/feedback','/plots'] or (self.path=='/catalogue' and sync is None):self.send_error(404);return
             origin=self.headers.get('Origin')
             if origin and not re.fullmatch(r'http://(?:127\.0\.0\.1|localhost):(?:8765|8770|8771)',origin):self.send_error(403);return
             if self.headers.get_content_type()!='application/json':self.send_error(415);return
@@ -109,15 +112,16 @@ def handler(data_dir,allowed,sync=None):
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=100000:self.send_error(413);return
                 payload=json.loads(self.rfile.read(length))
-                result={'accepted':sync.add(payload)} if self.path=='/catalogue' else {'saved':True,'state':feedback.save(payload)}
+                result=plots.save(payload) if self.path=='/plots' else {'accepted':sync.add(payload)} if self.path=='/catalogue' else {'saved':True,'state':feedback.save(payload)}
+                if self.path=='/plots' and result['saved']:indexer.schedule()
             except (ValueError,OSError,TypeError):self.send_error(400);return
             body=json.dumps(result).encode();self.send_response(202 if self.path=='/catalogue' else 200)
             self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         def do_GET(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
-            if self.path not in ['/recommendations','/health']:self.send_error(404);return
+            if self.path not in ['/recommendations','/health','/plots']:self.send_error(404);return
             try:
-                payload={'ready':True} if self.path=='/health' else recommendation_payload(data_dir,feedback)
+                payload={'ready':True} if self.path=='/health' else plots.queue() if self.path=='/plots' else recommendation_payload(data_dir,feedback)
                 body=json.dumps(payload).encode();self.send_response(200)
             except (OSError,ValueError,KeyError,urllib.error.URLError):
                 body=b'{"error":"Recommendation service is unavailable. Check Gorse on the Mac."}';self.send_response(503)
