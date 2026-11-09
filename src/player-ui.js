@@ -14,7 +14,7 @@ var FTV_PLAYER_UI=(function(){
     root.addEventListener('focusin',reveal);root.addEventListener('click',reveal);
     function focus(el){if(el){el.focus();if(el.scrollIntoView)el.scrollIntoView({block:'nearest'});}}
     function add(label,fn,selected){var b=document.createElement('button');b.type='button';b.textContent=(selected?'✓ ':'')+label;b.addEventListener('click',fn);if(selected!==undefined){b.setAttribute('role','menuitemradio');b.setAttribute('aria-checked',String(selected));}panel.appendChild(b);return b;}
-    function close(){if(panel){panel.remove();panel=null;trigger.style.display='';trigger.setAttribute('aria-expanded','false');hide();return true;}return false;}
+    function close(){if(panel){returnToVideo();panel.remove();panel=null;trigger.style.display='';trigger.setAttribute('aria-expanded','false');hide();return true;}return false;}
     function open(next){
       kind=next||'Settings';if(panel)panel.remove();trigger.style.display='none';trigger.setAttribute('aria-expanded','true');panel=document.createElement('div');panel.className='ftv-player-panel';panel.setAttribute('role','dialog');panel.setAttribute('aria-label',kind);panel.setAttribute('aria-modal','true');root.appendChild(panel);
       var title=document.createElement('h2');title.textContent=kind;panel.appendChild(title);
@@ -48,6 +48,7 @@ var FTV_PLAYER_UI=(function(){
     document.addEventListener('click',gearClick,true);
     function handleKey(e){
       var code=e.keyCode,key=e.key,active=document.activeElement;
+      if((code===13||key==='Enter')&&e.repeat)return true;
       var back=code===10009||key==='Escape'||key==='BrowserBack';
       if(panel)reveal();
       if(panel){
@@ -58,16 +59,18 @@ var FTV_PLAYER_UI=(function(){
           focus(buttons[(at+delta+buttons.length)%buttons.length]);return true;
         }return true;
       }
-      if((code===38||key==='ArrowUp')&&!root.contains(active)){reveal();focus(trigger);return true;}
+      if(code===38||key==='ArrowUp'){reveal();focus(trigger);return true;}
+      // Down returns to playback. Swallow subsequent presses so JW cannot lower volume.
+      if(code===40||key==='ArrowDown'){hide();return true;}
       if(root.contains(active)){
         if(code===13||key==='Enter'){trigger.click();return true;}
-        if(back||code===40||key==='ArrowDown'){hide();return true;}
+        if(back){hide();return true;}
+        if([37,39].indexOf(code)!==-1||key==='ArrowLeft'||key==='ArrowRight'||key==='Tab'){reveal();return true;}
       }
-      if((code===13||key==='Enter')&&active&&parent.contains(active)&&active.matches('[role="button"],button')){active.click();return true;}
       return false;
     }
     reveal();
-    return {handleKey:handleKey,close:close,destroy:function(){destroyed=true;clearTimeout(idleTimer);document.removeEventListener('click',gearClick,true);parent.removeEventListener('mousemove',reveal);parent.removeEventListener('pointerdown',reveal);returnToVideo();root.remove();}};
+    return {ownsFocus:function(){return !!panel||root.contains(document.activeElement);},handleKey:handleKey,close:close,destroy:function(){destroyed=true;clearTimeout(idleTimer);document.removeEventListener('click',gearClick,true);parent.removeEventListener('mousemove',reveal);parent.removeEventListener('pointerdown',reveal);returnToVideo();root.remove();}};
   }
   return {attach:attach};
 }());

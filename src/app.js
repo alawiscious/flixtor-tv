@@ -457,8 +457,12 @@
   function playbackKeys(){
     if(playbackKeysInstalled)return;playbackKeysInstalled=true;
 
-    document.addEventListener('keydown',function(e){
+    // Capture before document/player shortcuts, including their key-up volume handlers.
+    ['keyup','keypress'].forEach(function(type){window.addEventListener(type,function(e){if(playbackActive&&([13,37,38,39,40].indexOf(e.keyCode)!==-1||/^(Enter|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$/.test(e.key))){e.preventDefault();e.stopImmediatePropagation();}},true);});
+    window.addEventListener('keydown',function(e){
       if(!playbackActive)return;
+      if((e.keyCode===13||e.key==='Enter')&&e.repeat){e.preventDefault();e.stopImmediatePropagation();return;}
+      if(playerUI&&playerUI.ownsFocus()&&playerUI.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();return;}
       if(nextEpisode&&nextEpisode.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();return;}
       if(playerUI&&playerUI.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();return;}
       var code=e.keyCode,key=e.key,view=savedView();
