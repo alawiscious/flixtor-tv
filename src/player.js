@@ -26,5 +26,18 @@ var FTV_PLAYER = (function () {
     try{if(video){video.muted=!on;if(on&&video.volume===0)video.volume=.5;changed=true;}}catch(_){}
     return changed;
   }
-  return {bestQuality:bestQuality,preferHighest:preferHighest,setSound:setSound};
+  function sourceVolume(player,video){
+    try{if(player&&typeof player.getVolume==='function'){var n=Number(player.getVolume());if(isFinite(n)&&n>=0&&n<=100)return Math.round(n);}}catch(_){}
+    try{if(video&&isFinite(video.volume))return Math.round(video.volume*100);}catch(_){}
+    return null;
+  }
+  function setSourceVolume(player,video,level){
+    if([50,75,100].indexOf(level)===-1)return false;
+    var changed=false;
+    try{if(player&&typeof player.setVolume==='function'){player.setVolume(level);changed=true;}}catch(_){}
+    try{if(video){video.volume=level/100;video.muted=false;changed=true;}}catch(_){}
+    if(changed)try{if(player&&typeof player.setMute==='function')player.setMute(false);}catch(_){}
+    return changed;
+  }
+  return {sourceVolume:sourceVolume,setSourceVolume:setSourceVolume,bestQuality:bestQuality,preferHighest:preferHighest,setSound:setSound};
 }());

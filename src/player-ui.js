@@ -26,6 +26,10 @@ var FTV_PLAYER_UI=(function(){
         try{if(player&&typeof player.getMute==='function')muted=!!player.getMute()||(typeof player.getVolume==='function'&&player.getVolume()===0);}catch(_){}
         add('Sound on',function(){if(FTV_PLAYER.setSound(player,parent.querySelector('video'),true))close();else message('The player is not ready yet.');},muted===false);
         add('Mute',function(){if(FTV_PLAYER.setSound(player,parent.querySelector('video'),false))close();else message('The player is not ready yet.');},muted===true);
+        var sourceLevel=FTV_PLAYER.sourceVolume(player,video);
+        message('Source volume: '+(sourceLevel===null?'not available':sourceLevel+'%')+'. This controls FlixTor only, not the TV volume.');
+        [100,75,50].forEach(function(level){add('Source volume '+level+'%'+(level===100?' · full level':''),function(){if(FTV_PLAYER.setSourceVolume(player,parent.querySelector('video'),level))close();else message('Source volume is unavailable on this player.');},sourceLevel===level);});
+        message('Before choosing full level, lower the TV to a comfortable volume. For quiet speech, try a stereo track if one is offered below.');
         try{var tracks=player&&typeof player.getAudioTracks==='function'?player.getAudioTracks():[],selected=tracks.length?player.getCurrentAudioTrack():-1;
           tracks.forEach(function(track,index){add(track.name||track.language||('Audio track '+(index+1)),function(){try{player.setCurrentAudioTrack(index);FTV_PLAYER.setSound(player,parent.querySelector('video'),true);close();}catch(_){message('This audio track is not ready yet.');}},selected===index);});
           if(!tracks.length)message('No alternate audio tracks are offered by this stream.');
