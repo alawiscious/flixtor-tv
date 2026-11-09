@@ -20,7 +20,17 @@ var FTV_PLAYER_UI=(function(){
       var title=document.createElement('h2');title.textContent=kind;panel.appendChild(title);
       add(kind==='Settings'?'Close settings':'← Settings',function(){if(kind==='Settings')close();else open('Settings');});
       var player;try{player=getPlayer();}catch(_){}
-      if(kind==='Settings'){add('Subtitles',function(){open('Subtitles');});add('Quality',function(){open('Quality');});}
+      if(kind==='Settings'){add('Audio',function(){open('Audio');});add('Subtitles',function(){open('Subtitles');});add('Quality',function(){open('Quality');});}
+      else if(kind==='Audio'){
+        var video=parent.querySelector('video'),muted=video?video.muted||video.volume===0:null;
+        try{if(player&&typeof player.getMute==='function')muted=!!player.getMute()||(typeof player.getVolume==='function'&&player.getVolume()===0);}catch(_){}
+        add('Sound on',function(){if(FTV_PLAYER.setSound(player,parent.querySelector('video'),true))close();else message('The player is not ready yet.');},muted===false);
+        add('Mute',function(){if(FTV_PLAYER.setSound(player,parent.querySelector('video'),false))close();else message('The player is not ready yet.');},muted===true);
+        try{var tracks=player&&typeof player.getAudioTracks==='function'?player.getAudioTracks():[],selected=tracks.length?player.getCurrentAudioTrack():-1;
+          tracks.forEach(function(track,index){add(track.name||track.language||('Audio track '+(index+1)),function(){try{player.setCurrentAudioTrack(index);FTV_PLAYER.setSound(player,parent.querySelector('video'),true);close();}catch(_){message('This audio track is not ready yet.');}},selected===index);});
+          if(!tracks.length)message('No alternate audio tracks are offered by this stream.');
+        }catch(_){message('Audio tracks will appear when the player is ready.');}
+      }
       else if(player){
         try{
           var captions=kind==='Subtitles',items=captions?player.getCaptionsList():player.getQualityLevels(),current=captions?player.getCurrentCaptions():player.getCurrentQuality();

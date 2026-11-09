@@ -20,5 +20,11 @@ var FTV_PLAYER = (function () {
       return player.getCurrentQuality()===index;
     } catch (_) {return false;}
   }
-  return {bestQuality:bestQuality,preferHighest:preferHighest};
+  function setSound(player,video,on){
+    var changed=false;
+    try{if(player&&typeof player.setMute==='function'){player.setMute(!on);if(on&&typeof player.getVolume==='function'&&player.getVolume()===0&&typeof player.setVolume==='function')player.setVolume(50);changed=true;}}catch(_){}
+    try{if(video){video.muted=!on;if(on&&video.volume===0)video.volume=.5;changed=true;}}catch(_){}
+    return changed;
+  }
+  return {bestQuality:bestQuality,preferHighest:preferHighest,setSound:setSound};
 }());
