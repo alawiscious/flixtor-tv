@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.6`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.6.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.7`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.7.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.6` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.7` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -120,3 +120,7 @@ For You also includes a resumable public-synopsis collector. It uses native info
 ### 0.3.6: signed updates without routine TV restarts
 
 Install this module once and fully reopen TizenBrew. The stable launcher/service then checks signed GitHub releases and caches the interface on the TV. Reopening FlixTor applies a ready update; playback is never reloaded. App updates provides manual checks and rollback. The updater bridge uses TV loopback 8773, independent of older modules on 8770. Native-page code is verified with Web Crypto without changing FlixTor policy. Service changes still require a module migration. See UPDATING.md for publishing, private signing-key handling, recovery and TV validation.
+
+### 0.3.7: sidebar access and audio controls
+
+Arrow navigation continues from Search through the lower sidebar actions, including App updates; the sidebar scrolls with focus on shorter viewports. Playback clears player mute and recovers a zero player volume at startup while preserving existing nonzero levels. Settings includes Audio, Sound on/Mute, and alternate audio tracks when the stream offers them. These controls do not change Samsung system volume or transcode an unsupported audio codec. Existing updater installations can receive this browser-only fix by reopening FlixTor.

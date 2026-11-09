@@ -34,3 +34,6 @@ let selected=0;const levels=[{label:'Auto'},{label:'720p'},{label:'1080p'}];
 assert(quality.preferHighest({getQualityLevels:()=>levels,getCurrentQuality:()=>selected,setCurrentQuality:i=>{selected=i;}}));assert.equal(selected,2);
 assert(!quality.preferHighest({getQualityLevels:()=>{throw new Error('not ready');}}));
 console.log('PASS: highest offered quality, Auto exclusion, empty/unready player and selected-quality confirmation.');
+
+// Player sound restores mute/zero-volume states without raising a nonzero level.
+let mute=true,vol=0;const soundPlayer={setMute:v=>{mute=v;},getVolume:()=>vol,setVolume:v=>{vol=v;}};const soundVideo={muted:true,volume:0};assert(quality.setSound(soundPlayer,soundVideo,true));assert.equal(mute,false);assert.equal(vol,50);assert.equal(soundVideo.muted,false);assert.equal(soundVideo.volume,.5);vol=20;soundVideo.volume=.2;quality.setSound(soundPlayer,soundVideo,true);assert.equal(vol,20);assert.equal(soundVideo.volume,.2);quality.setSound(soundPlayer,soundVideo,false);assert(mute&&soundVideo.muted);assert(quality.setSound({setMute(){throw Error("not ready");}},soundVideo,true));assert.equal(soundVideo.muted,false);console.log("PASS: player mute and zero-volume recovery, existing level preservation, explicit mute and unavailable JW fallback.");
