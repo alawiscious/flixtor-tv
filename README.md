@@ -124,3 +124,9 @@ Install this module once and fully reopen TizenBrew. The stable launcher/service
 ### 0.3.7: sidebar access and audio controls
 
 Arrow navigation continues from Search through the lower sidebar actions, including App updates; the sidebar scrolls with focus on shorter viewports. Playback clears player mute and recovers a zero player volume at startup while preserving existing nonzero levels. Settings includes Audio, Sound on/Mute, and alternate audio tracks when the stream offers them. These controls do not change Samsung system volume or transcode an unsupported audio codec. Existing updater installations can receive this browser-only fix by reopening FlixTor.
+
+### TV watching controls (0.3.8)
+
+Home has Continue watching, and Watching shows FlixTor's saved episode and minutes remaining. Series details offer Resume and open the last-used season; episode rows show saved progress or Watched. Completed episodes offer the next available episode, including across seasons.
+
+During playback press Up for Settings, then Next episode or Autoplay next episode. A next-episode panel appears in the last 30 seconds; Down selects Play next episode. FlixTor remains the only autoplay scheduler and progress writer. Its existing Sync Code is required to share history between devices. This UI reads native progress; it cannot reconstruct viewing history that FlixTor never saved. No viewing history is bundled or published with updates.
