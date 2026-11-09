@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.10`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.10.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.11`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.11.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.10` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.11` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -137,3 +137,8 @@ During playback press Up for Settings, then Next episode or Autoplay next episod
 0.3.10 adds explicit source-volume choices (100%, 75%, 50%) under Player Settings → Audio. Choosing a level unmutes the media player and adjusts its media volume, not Samsung's system volume. Current levels are displayed. Volume is not automatically raised by this update. Lower the TV before selecting full source level. This is gain control, not dialogue isolation or loudness normalization. Native alternate audio tracks remain available when the stream offers them.
 
 For a TV on another network, normal FlixTor browsing, playback and signed GitHub updates do not need the original Mac. First install TizenBrew using a computer on the TV's own network, following its official guide: https://github.com/reisxd/TizenBrew/blob/main/docs/README.md . TizenBrew requires Tizen 3.0 / 2017 or newer; that minimum does not certify this overlay on every older model. This release removes the episode-number formatter's dependency on String.padStart for older browsers. Test login, navigation, updater verification and playback on the actual TV. The current private Mac recommendation service is not available across unrelated networks. FlixTor sign-in and its existing Sync Code control access and list/progress synchronization separately.
+
+
+### Recommendation profiles (0.3.11)
+
+The recommendation server can return separate named profiles imported from Netflix. The TV asks who recommendations are for, and Recommendations profile switches the selected viewer. For You identifies the active profile; votes are saved independently. The old Amazon household profile remains available and unassigned. Native FlixTor Favorites and resume history still use the current Sync Code. No raw history, names, per-profile picks or feedback are included in public bundles. See backend/NETFLIX_PROFILES.md for private import and Mac relay restart instructions.
