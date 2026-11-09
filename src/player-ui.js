@@ -1,6 +1,6 @@
 /* Remote-friendly controls around the existing player; no stream or progress replacement. */
 var FTV_PLAYER_UI=(function(){
-  function attach(parent,getPlayer){
+  function attach(parent,getPlayer,getNext){
     var old=document.getElementById('ftv-player-controls');if(old)old.remove();
     var root=document.createElement('div');root.id='ftv-player-controls';
     var style=document.createElement('style');style.textContent='#ftv-player-controls{position:absolute;top:3vh;right:3vw;z-index:2147483200;color:#fff;font:24px Arial;font-size:clamp(22px,1.6vw,48px)}#ftv-player-controls button{font:inherit;color:#fff;background:#172433;border:2px solid #728297;border-radius:10px;padding:.55em .9em;cursor:pointer}#ftv-player-controls button:focus{outline:4px solid #b9ef83;outline-offset:4px;background:#314839}#ftv-player-controls .ftv-player-panel{background:#101820f5;padding:1.2em;border:2px solid #71819b;border-radius:14px;max-height:82vh;overflow:auto;width:30vw;min-width:320px;max-width:760px;box-shadow:0 10px 50px #000a}#ftv-player-controls h2{font:inherit;font-weight:bold;margin:0 0 1em}#ftv-player-controls .ftv-player-panel button{display:block;width:100%;text-align:left;margin:.55em 0}#ftv-player-controls p{line-height:1.5}';root.appendChild(style);
@@ -20,7 +20,7 @@ var FTV_PLAYER_UI=(function(){
       var title=document.createElement('h2');title.textContent=kind;panel.appendChild(title);
       add(kind==='Settings'?'Close settings':'← Settings',function(){if(kind==='Settings')close();else open('Settings');});
       var player;try{player=getPlayer();}catch(_){}
-      if(kind==='Settings'){add('Audio',function(){open('Audio');});add('Subtitles',function(){open('Subtitles');});add('Quality',function(){open('Quality');});}
+      if(kind==='Settings'){var next=getNext&&getNext();if(next&&next.next())add('▶ Next episode',function(){close();next.advance();});var autoplay=document.querySelector('#autoplay-toggle');if(autoplay)add('Autoplay next episode: '+(autoplay.checked?'On':'Off'),function(){autoplay.click();open('Settings');});add('Audio',function(){open('Audio');});add('Subtitles',function(){open('Subtitles');});add('Quality',function(){open('Quality');});}
       else if(kind==='Audio'){
         var video=parent.querySelector('video'),muted=video?video.muted||video.volume===0:null;
         try{if(player&&typeof player.getMute==='function')muted=!!player.getMute()||(typeof player.getVolume==='function'&&player.getVolume()===0);}catch(_){}
