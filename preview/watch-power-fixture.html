@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>TV watching controls test</title>
+<style>body{background:#090d12;color:#fff;font:26px Arial}button{font:inherit;padding:16px}#playerwrapper{position:relative;height:80vh;background:#172433}</style>
+<h1>Episode controls · synthetic test</h1><button id="end">Show final 20 seconds</button><button id="native">Simulate native autoplay</button><p id="status">SEAL Team · S2 E14 · test data only</p>
+<div id="playerwrapper"><video tabindex="0"></video></div><input type="checkbox" id="autoplay-toggle" checked hidden>
+<script src="../src/watch-history.js"></script><script src="../src/player.js"></script><script src="../src/player-ui.js"></script><script src="../src/next-episode.js"></script>
+<script>
+var season=2,number=14,time=0;var v=document.querySelector('video');Object.defineProperties(v,{duration:{get:function(){return 2400}},currentTime:{get:function(){return time}},ended:{get:function(){return false}}});
+var row=document.createElement('div');row.className='eplist table-active';row.setAttribute('data-pes','2');row.setAttribute('data-pep','14');document.body.appendChild(row);
+function advance(){number=15;time=0;row.setAttribute('data-pep','15');document.querySelector('#status').textContent='Native episode selection: S2 E15';}
+var eps=[{season:2,number:14,title:'Test episode 14'},{season:2,number:15,title:'Test episode 15',native:{click:advance}}];
+var next=FTV_NEXT.attach(document.querySelector('#playerwrapper'),function(){return eps});var ui=FTV_PLAYER_UI.attach(document.querySelector('#playerwrapper'),function(){return null},function(){return next});
+document.addEventListener('keydown',function(e){if(next.handleKey(e)||ui.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();}},true);
+document.querySelector('#end').onclick=function(){time=2380};document.querySelector('#native').onclick=advance;
+</script>
