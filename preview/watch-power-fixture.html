@@ -9,6 +9,6 @@ var row=document.createElement('div');row.className='eplist table-active';row.se
 function advance(){number=15;time=0;row.setAttribute('data-pep','15');document.querySelector('#status').textContent='Native episode selection: S2 E15';}
 var eps=[{season:2,number:14,title:'Test episode 14'},{season:2,number:15,title:'Test episode 15',native:{click:advance}}];
 var next=FTV_NEXT.attach(document.querySelector('#playerwrapper'),function(){return eps});var ui=FTV_PLAYER_UI.attach(document.querySelector('#playerwrapper'),function(){return null},function(){return next});
-document.addEventListener('keydown',function(e){if(next.handleKey(e)||ui.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();}},true);
+window.addEventListener('keydown',function(e){if((ui.ownsFocus()&&ui.handleKey(e))||next.handleKey(e)||ui.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();}},true);
 document.querySelector('#end').onclick=function(){time=2380};document.querySelector('#native').onclick=advance;
 </script>
