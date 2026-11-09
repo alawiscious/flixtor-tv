@@ -5,6 +5,7 @@ Only the configured TV and this Mac may connect. No arbitrary proxy/admin routes
 import re, argparse, json, math, urllib.request, urllib.error, threading, subprocess, sys, time, os
 from datetime import datetime,timezone
 from feedback import FeedbackStore
+from profiles import RecommendationProfiles
 from plots import PlotStore,ShadowIndexer
 from recommendation_features import vector
 from pathlib import Path
@@ -54,7 +55,7 @@ def recommendation_payload(data_dir,feedback=None):
     while candidates and len(output)<24:
         best=max(range(len(candidates)),key=lambda n:candidates[n][0]-.24*max((similarity(candidates[n][1],features.get(candidates[n][1]['id'],{}),old,features.get(old['id'],{})) for old in output[-8:]),default=0))
         output.append(candidates.pop(best)[1])
-    return {'engine':'gorse','scope':'Amazon import · household profile unassigned','model':'Genres + content metadata + creators; explicit feedback, recency and diversity' if features else 'Genres + your feedback; recency and diversity',
+    return {'engine':'gorse','scope':matched.get('scope','Amazon import · household profile unassigned'),'model':'Genres + content metadata + creators; explicit feedback, recency and diversity' if features else 'Genres + your feedback; recency and diversity',
             'seedCount':len(seeds),'catalogueCount':len(items),'items':output,'feedbackPending':sum(s['syncPending'] for s in states.values())}
 
 class CatalogueSync:
@@ -98,7 +99,7 @@ class CatalogueSync:
                     self.scheduled=True;timer=threading.Timer(3,self.run);timer.daemon=True;timer.start()
 
 def handler(data_dir,allowed,sync=None):
-    feedback=FeedbackStore(data_dir)
+    profiles=RecommendationProfiles(data_dir)
     plots=PlotStore(data_dir)
     indexer=ShadowIndexer(data_dir,sync.db if sync else None)
     class Handler(BaseHTTPRequestHandler):
@@ -112,7 +113,7 @@ def handler(data_dir,allowed,sync=None):
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=100000:self.send_error(413);return
                 payload=json.loads(self.rfile.read(length))
-                result=plots.save(payload) if self.path=='/plots' else {'accepted':sync.add(payload)} if self.path=='/catalogue' else {'saved':True,'state':feedback.save(payload)}
+                result=plots.save(payload) if self.path=='/plots' else {'accepted':sync.add(payload)} if self.path=='/catalogue' else {'saved':True,'state':profiles.save(payload)}
                 if self.path=='/plots' and result['saved']:indexer.schedule()
             except (ValueError,OSError,TypeError):self.send_error(400);return
             body=json.dumps(result).encode();self.send_response(202 if self.path=='/catalogue' else 200)
@@ -121,7 +122,7 @@ def handler(data_dir,allowed,sync=None):
             if self.client_address[0] not in allowed:self.send_error(403);return
             if self.path not in ['/recommendations','/health','/plots']:self.send_error(404);return
             try:
-                payload={'ready':True} if self.path=='/health' else plots.queue() if self.path=='/plots' else recommendation_payload(data_dir,feedback)
+                payload={'ready':True} if self.path=='/health' else plots.queue() if self.path=='/plots' else profiles.bundle(recommendation_payload)
                 body=json.dumps(payload).encode();self.send_response(200)
             except (OSError,ValueError,KeyError,urllib.error.URLError):
                 body=b'{"error":"Recommendation service is unavailable. Check Gorse on the Mac."}';self.send_response(503)
