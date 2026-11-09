@@ -37,3 +37,10 @@ console.log('PASS: highest offered quality, Auto exclusion, empty/unready player
 
 // Player sound restores mute/zero-volume states without raising a nonzero level.
 let mute=true,vol=0;const soundPlayer={setMute:v=>{mute=v;},getVolume:()=>vol,setVolume:v=>{vol=v;}};const soundVideo={muted:true,volume:0};assert(quality.setSound(soundPlayer,soundVideo,true));assert.equal(mute,false);assert.equal(vol,50);assert.equal(soundVideo.muted,false);assert.equal(soundVideo.volume,.5);vol=20;soundVideo.volume=.2;quality.setSound(soundPlayer,soundVideo,true);assert.equal(vol,20);assert.equal(soundVideo.volume,.2);quality.setSound(soundPlayer,soundVideo,false);assert(mute&&soundVideo.muted);assert(quality.setSound({setMute(){throw Error("not ready");}},soundVideo,true));assert.equal(soundVideo.muted,false);console.log("PASS: player mute and zero-volume recovery, existing level preservation, explicit mute and unavailable JW fallback.");
+
+// Explicit source level adjusts media gain, never Samsung's system volume.
+assert.equal(quality.sourceVolume(soundPlayer,soundVideo),20);
+for(const level of [50,75,100]){assert(quality.setSourceVolume(soundPlayer,soundVideo,level));assert.equal(vol,level);assert.equal(soundVideo.volume,level/100);assert.equal(mute,false);assert.equal(soundVideo.muted,false);}
+for(const level of [-1,0,51,150,NaN,'100'])assert(!quality.setSourceVolume(soundPlayer,soundVideo,level));
+assert.equal(vol,100);assert(quality.setSourceVolume({setVolume(){throw Error('unready')}},soundVideo,75));assert.equal(soundVideo.volume,.75);assert(!quality.setSourceVolume(null,null,100));assert.equal(quality.sourceVolume(null,null),null);
+console.log('PASS: explicit 50/75/100 source levels, mute recovery, invalid-level rejection and unavailable player fallback.');
