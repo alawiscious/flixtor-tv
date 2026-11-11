@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "bridge": 1,
+  "version": "0.3.12",
+  "path": "updates/releases/0.3.12.json",
+  "sha256": "1cbcea2311fdce8c4e106ca9eb7a115ee3601000a455c87289df5027f41b1bdb",
+  "signature": "Ir/O9wq0R+5k+1mU2nykdXOfDT1SBp00OBOosN+uJHUWFfQBr0z2HGosKyH1bReiORgrXFaEapXHX/mBr6lnjTwpCIXNq4fGc/P6vM1CKXMrsJOW4M5/8wVQEtrkTot+fGxq307UbpPJM4oa4LqZGojFS3U4Nl14F427eBXcpWysmfKP0a2yR+s6FwAvps3/Blf+PUkSMqIOuNcmWtSKsazNaRfjKMRxzprEdu4SVzwkVBznFpScaDvG8dleseDzfPVm9BOIpmZciktIrXNdsB8HhyDac9r+fDTUJD2VP/h2gX9hDk9CqKsi93EPEKVM4e4J1u+Se7SYGF1MutNHYA=="
+}
