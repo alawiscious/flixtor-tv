@@ -24,6 +24,47 @@ assert(!new URL(filter.target(filteredURL.href,'rating',0)).searchParams.has('ra
 assert.equal(new URL(filter.target(filteredURL.href,'reset',0)).search,'');
 assert.throws(()=>filter.target(filteredURL.href,'yrf',2027));assert.throws(()=>filter.target('https://example.com/show/movies','rating',8));
 console.log('PASS: inclusive year/rating bounds, unknown metadata, pagination reset, preserved native query and invalid ranges.');
+// Live genre queries use FlixTor's complete native genre vocabulary, independent of the visible page.
+const genreOptions=Array.from(filter.genres());
+assert.deepEqual(genreOptions,['All genres','Action','Adventure','Animation','Comedy','Crime','Documentary','Drama','Family','History','Horror','Music','Mystery','Romance','Sci-Fi & Fantasy','TV-Movie','Thriller','War','Western']);
+genreOptions.push('Unsupported');assert(!Array.from(filter.genres()).includes('Unsupported'),'options are defensive copies');
+for(const genre of Array.from(filter.genres()).slice(1)){
+  const url=new URL(filter.target(filteredURL.href,'genre',genre));
+  assert.equal(url.searchParams.get('genre'),genre);assert.equal(filter.read(url.href).genre,genre);
+  assert.equal(url.searchParams.get('yrf'),'2020');assert.equal(url.searchParams.get('yrt'),'2026');assert.equal(url.searchParams.get('rating'),'8');assert.equal(url.searchParams.get('sort'),'best');assert(!url.searchParams.has('page'));
+}
+const sciState=filter.read('https://flixtor.to/show/movies?genre=Sci-Fi%20%26%20Fantasy&yrf=2020&rating=7');
+assert.equal(sciState.genre,'Sci-Fi & Fantasy');
+for(const alias of ['Science-Fiction','Sci-Fi','Science Fiction','Fantasy','Sci-Fi & Fantasy']){
+ assert.equal(filter.read('https://flixtor.to/show/movies?genre='+encodeURIComponent(alias)).genre,'Sci-Fi & Fantasy');
+ assert.equal(new URL(filter.target(filteredURL.href,'genre',alias)).searchParams.get('genre'),'Sci-Fi & Fantasy');
+ assert(filter.matches({year:2025,rating:8,meta:'Drama, '+alias},sciState));
+}
+assert(filter.matches({year:2025,rating:8,genres:['Science-Fiction']},sciState));
+assert(filter.matches({year:2025,rating:8,genre:'Sci-Fi'},sciState));
+for(const item of [{year:2025,rating:8,meta:'Drama'},{year:2019,rating:8,meta:'Sci-Fi'},{year:2025,rating:6,meta:'Sci-Fi'},{year:2025,rating:8,meta:'Not Sci-Fi'},{year:2025,rating:8}])assert(!filter.matches(item,sciState));
+for(const clear of ['','all','All genres']){
+ const cleared=new URL(filter.target('https://flixtor.to/show/movies?genre=Drama&page=9&rating=7','genre',clear));
+ assert(!cleared.searchParams.has('genre'));assert(!cleared.searchParams.has('page'));assert.equal(cleared.searchParams.get('rating'),'7');assert.equal(filter.read(cleared.href).genre,'');
+}
+for(const invalid of ['Unsupported','Sci-Fi<script>',null,0,{}]){
+ assert.throws(()=>filter.target(filteredURL.href,'genre',invalid));
+ assert.equal(filter.read('https://flixtor.to/show/movies?genre='+encodeURIComponent(String(invalid))).genre,'');
+}
+assert.equal(filter.read('https://flixtor.to/show/movies').genre,'');
+assert.equal(filter.read('https://flixtor.to/show/movies?genre=tv%20movie').genre,'TV-Movie');
+assert.equal(new URL(filter.target(filteredURL.href,'reset',0)).search,'');
+console.log('PASS: full native genre choices, canonical sci-fi aliases, exact metadata matching, invalid genre rejection, clear/reset and preserved year/rating/sort.');
+for(const sort of ['latest','best','name']){
+ const sorted=new URL(filter.target('https://flixtor.to/show/movies?genre=Drama&yrf=2020&yrt=2026&rating=7&page=8#ftv-original','sort',sort));
+ assert.equal(sorted.searchParams.get('sort'),sort);assert.equal(filter.read(sorted.href).sort,sort);assert(!sorted.searchParams.has('page'));assert.equal(sorted.hash,'');
+ assert.equal(sorted.searchParams.get('genre'),'Drama');assert.equal(sorted.searchParams.get('yrf'),'2020');assert.equal(sorted.searchParams.get('yrt'),'2026');assert.equal(sorted.searchParams.get('rating'),'7');
+}
+const defaultSort=new URL(filter.target(filteredURL.href,'sort',''));assert(!defaultSort.searchParams.has('sort'));assert.equal(defaultSort.searchParams.get('genre'),'Drama');assert.equal(filter.read(defaultSort.href).sort,'');
+for(const invalid of ['newest','BEST',null,0,{}]){assert.throws(()=>filter.target(filteredURL.href,'sort',invalid));assert.equal(filter.read('https://flixtor.to/show/movies?sort='+encodeURIComponent(String(invalid))).sort,'');}
+console.log('PASS: native latest/best/name sorting, default clearing, invalid sort rejection, pagination reset and preserved genre/year/rating.');
+
+
 
 const playerContext={};vm.createContext(playerContext);vm.runInContext(fs.readFileSync(__dirname+'/src/player.js','utf8'),playerContext);
 const quality=playerContext.FTV_PLAYER;

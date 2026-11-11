@@ -4,7 +4,7 @@ A remote-first interface over the live FlixTor website, with poster rails, slidi
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.11`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.11.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.12`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.12.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -39,7 +39,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.11` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.12` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 
@@ -142,3 +142,11 @@ For a TV on another network, normal FlixTor browsing, playback and signed GitHub
 ### Recommendation profiles (0.3.11)
 
 The recommendation server can return separate named profiles imported from Netflix. The TV asks who recommendations are for, and Recommendations profile switches the selected viewer. For You identifies the active profile; votes are saved independently. The old Amazon household profile remains available and unassigned. Native FlixTor Favorites and resume history still use the current Sync Code. No raw history, names, per-profile picks or feedback are included in public bundles. See backend/NETFLIX_PROFILES.md for private import and Mac relay restart instructions.
+
+### Reliability and TV readability (0.3.12)
+
+Genre and sorting now use the full FlixTor catalogue rather than only the loaded page. Genre, year and rating selectors use larger multicolumn choices with remote navigation; sidebar labels are larger too. Watched episode rows have a prominent check badge and row treatment. Explicit viewer episode-completion facts are stored privately on the Mac, separate from shared FlixTor playback positions, and resolve next unwatched episodes without invented timestamps or durations.
+
+Recommendation preference and watched choices save in order without disabling focus or reordering the active card. Background profile requests no longer interrupt other tasks. Native progress is scanned once per card refresh; transport keys remain available with player settings open.
+
+The Mac relay starts bounded anonymous public synopsis gathering automatically; the manual main-interface action is hidden. Source access failures defer safely, and successful live anonymous collection remains deployment-dependent. Existing recommendations remain available; semantic ranking is not automatically promoted. Existing updater installations receive the interface by reopening FlixTor, without a TV reboot or module reinstall. The private Mac relay must run this backend version for profile episode facts and automatic enrichment. See UX_REVIEW.md for the release review checklist.

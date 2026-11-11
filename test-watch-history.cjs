@@ -19,3 +19,48 @@ video.ended=true;tick();assert.equal(clicks,0,'native autoplay alone handles com
 active={season:2,number:15};assert(!manager.advance('2:14'),'stale countdown cannot skip the episode native autoplay just opened');video={duration:2500,currentTime:0,ended:false};tick();assert.equal(panel.style.display,'none');assert.equal(manager.next().season,3);assert(manager.advance());assert.equal(clicks,2);
 active={season:3,number:1};tick();assert.equal(manager.next(),null);assert(!manager.advance());manager.destroy();assert.equal(tick,null);assert(panel.removed);
 console.log('PASS: visible countdown, no competing end scheduler, double-click lock, native episode replacement, finale and teardown.');
+
+// Decoration must read one history snapshot per catalogue, not once per card.
+let storageKeys=0,storageReads=0;const entries=Object.fromEntries(Array.from({length:5000},(_,i)=>['pos:'+String(i+1)+':2:14','900:2400:'+String(i+1)]));
+let entryKeys=Object.keys(entries);const batchContext={localStorage:{get length(){return entryKeys.length},key(i){storageKeys++;return entryKeys[i]},getItem(k){storageReads++;return entries[k]}},window:{},setTimeout,clearTimeout};vm.createContext(batchContext);vm.runInContext(fs.readFileSync('src/watch-history.js','utf8'),batchContext);
+const batchItems=Array.from({length:400},(_,i)=>({url:'https://flixtor.to/watch/tv/'+(i+1)+'/example'}));batchContext.FTV_HISTORY.decorateAll(batchItems);assert.equal(storageKeys,5000);assert.equal(storageReads,5000);assert.equal(batchItems[0].resume.number,14);
+entries['pos:1:2:15']='1000:2400:999999';entryKeys=Object.keys(entries);batchContext.FTV_HISTORY.decorateAll(batchItems);assert.equal(batchItems[0].resume.number,15,'a new batch sees newly synced progress');console.log('PASS: one history scan per catalogue and fresh progress on the next batch.');
+
+// Profile completion facts never become native playback positions.
+function state(record,season,number,facts){return JSON.parse(JSON.stringify(h.episodeState(record,season,number,facts)));}
+const nativeComplete=Object.freeze({season:2,number:18,complete:true,position:2400,duration:2400,timestamp:123});
+const partial=Object.freeze({season:2,number:18,complete:false,position:600,duration:2400,timestamp:456});
+const completionFacts=Object.freeze({completedSeasons:Object.freeze([1]),completedThrough:Object.freeze({season:2,episode:17})});
+assert.deepEqual(state(partial,2,17,completionFacts),{watched:true,source:'manual'});
+assert.deepEqual(state(null,1,999,completionFacts),{watched:true,source:'manual'});
+assert.deepEqual(state(null,1,999,{completedThrough:{season:2,episode:17}}),{watched:true,source:'manual'},'through marker includes earlier seasons');
+assert.deepEqual(state(nativeComplete,2,18,{completedSeasons:[2]}),{watched:true,source:'manual'},'manual source wins over native completion');
+assert.deepEqual(state(null,1,1,{completedSeasons:['1']}),{watched:false,source:'none'});
+assert.deepEqual(state(null,2,18,completionFacts),{watched:false,source:'none'});
+assert.deepEqual(state(null,3,1,completionFacts),{watched:false,source:'none'});
+assert.deepEqual(state(nativeComplete,2,18,completionFacts),{watched:true,source:'native'});
+assert.deepEqual(state(nativeComplete,2,19,completionFacts),{watched:false,source:'none'},'another episode cannot borrow native completion');
+assert.deepEqual(state(partial,2,18,completionFacts),{watched:false,source:'none'});
+const explicitFacts={completedSeasons:[1,2],completedThrough:{season:3,episode:5},episodes:{'2:18':{watched:false},'4:1':{watched:true}}};
+assert.deepEqual(state(nativeComplete,2,18,explicitFacts),{watched:false,source:'manual'},'explicit unwatched overrides ranges and native completion');
+assert.deepEqual(state(null,4,1,explicitFacts),{watched:true,source:'manual'});
+assert.deepEqual(state(null,2,18,{episodes:{'2:18':{watched:'true'}}}),{watched:false,source:'none'});
+for(const invalid of [0,-1,1.5,NaN,Infinity,'2']){
+  assert.deepEqual(state(nativeComplete,invalid,18,explicitFacts),{watched:false,source:'none'});
+  assert.deepEqual(state(null,2,invalid,completionFacts),{watched:false,source:'none'});
+  assert.deepEqual(state(null,1,1,{completedThrough:{season:invalid,episode:17}}),{watched:false,source:'none'});
+  assert.deepEqual(state(null,1,1,{completedThrough:{season:2,episode:invalid}}),{watched:false,source:'none'});
+}
+assert.deepEqual(state(null,1,1,{completedSeasons:'1'}),{watched:false,source:'none'});
+assert.deepEqual(state(null,2,18,null),{watched:false,source:'none'});
+const orderedCandidates=[Object.freeze({season:3,number:1}),Object.freeze({season:2,number:19}),Object.freeze({season:2,number:18,resume:nativeComplete}),Object.freeze({season:1,number:1}),Object.freeze({season:2,number:17})];
+const candidatesSnapshot=JSON.stringify(orderedCandidates),nativeSnapshot=JSON.stringify(nativeComplete),factsSnapshot=JSON.stringify(completionFacts);
+assert.equal(h.nextUnwatched(orderedCandidates,completionFacts),orderedCandidates[1]);
+assert.equal(h.nextUnwatched(orderedCandidates,explicitFacts),orderedCandidates[2],'explicit unwatched is selectable for replay');
+assert.equal(h.nextUnwatched([{season:1,number:1}],completionFacts),null);
+assert.equal(h.nextUnwatched([],completionFacts),null);
+assert.equal(h.nextUnwatched([null,{season:0,number:1},{season:1,number:0}],{}),null);
+assert.equal(JSON.stringify(orderedCandidates),candidatesSnapshot);assert.equal(JSON.stringify(nativeComplete),nativeSnapshot);assert.equal(JSON.stringify(completionFacts),factsSnapshot);
+assert.deepEqual(Object.keys(state(null,1,1,completionFacts)).sort(),['source','watched']);
+assert.deepEqual(state(null,1,1,{}),{watched:false,source:'none'},'completion facts for one profile do not bleed into another');
+console.log('PASS: profile episode facts, explicit unwatched precedence, native completion identity, invalid facts, first available unwatched, no mutation and no fabricated playback positions.');

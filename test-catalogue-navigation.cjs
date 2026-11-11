@@ -1,0 +1,14 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync(__dirname+'/src/app.js','utf8');
+const ctx={URL,location:{assign(url){ctx.assigned=url;}},sessionStorage:{setItem(){},removeItem(){}},main:{classList:{add(){}}},sort:'Featured',nativeFilters:()=>true,sourceHref:()=> 'https://flixtor.to/show/movies?yrf=2000&rating=7&page=4',sourcePath:()=>'/show/movies',rememberView(){},toast(message){throw new Error(message);}};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/src/filters.js','utf8'),ctx);
+vm.runInContext(source.slice(source.indexOf('  function changeCatalogueFilter('),source.indexOf('  function chooseFilterYear(')),ctx);
+ctx.changeCatalogueFilter('genre','Science-Fiction');let u=new URL(ctx.assigned);
+assert.equal(u.searchParams.get('genre'),'Sci-Fi & Fantasy');assert.equal(u.searchParams.get('rating'),'7');assert.equal(u.searchParams.get('yrf'),'2000');assert(!u.searchParams.has('page'));
+ctx.sourceHref=()=>u.href;ctx.changeCatalogueFilter('sort','best');u=new URL(ctx.assigned);assert.equal(u.searchParams.get('genre'),'Sci-Fi & Fantasy');assert.equal(u.searchParams.get('sort'),'best');
+vm.runInContext(source.slice(source.indexOf('  function filtered('),source.indexOf('  function render(){')),ctx);
+ctx.filterState={genre:'Sci-Fi & Fantasy',rating:7,from:2000,to:0};
+assert.equal(ctx.filtered([{title:'Source result with incomplete card metadata',year:'',meta:''}]).length,1,'Native full-catalogue results must not be narrowed again using incomplete current-page metadata');
+ctx.nativeFilters=()=>false;
+assert.equal(ctx.filtered([{title:'Valid',meta:'Science-Fiction',year:2020,rating:8},{title:'Other',meta:'Comedy',year:2020,rating:8}]).length,1,'Preview collections still filter locally');
+console.log('PASS: genre navigates full source catalogue, filter/sort composition, page reset and authoritative source results.');
