@@ -6,7 +6,7 @@ import re, argparse, json, math, urllib.request, urllib.error, threading, subpro
 from datetime import datetime,timezone
 from feedback import FeedbackStore
 from profiles import RecommendationProfiles
-from plots import PlotStore,ShadowIndexer
+from plots import PlotStore,ShadowIndexer,AutomaticPlotCollector
 from recommendation_features import vector
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -98,10 +98,12 @@ class CatalogueSync:
                 if self.pending:
                     self.scheduled=True;timer=threading.Timer(3,self.run);timer.daemon=True;timer.start()
 
-def handler(data_dir,allowed,sync=None):
+def handler(data_dir,allowed,sync=None,automatic_plots=False):
     profiles=RecommendationProfiles(data_dir)
     plots=PlotStore(data_dir)
     indexer=ShadowIndexer(data_dir,sync.db if sync else None)
+    collector=AutomaticPlotCollector(plots,indexer) if automatic_plots else None
+    if collector:collector.start()
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
@@ -129,10 +131,16 @@ def handler(data_dir,allowed,sync=None):
             self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store')
             self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         def log_message(self,*args):pass # no household history in request logs
+    Handler.plot_collector=collector
     return Handler
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--db');p.add_argument('--tv-ip',required=True);p.add_argument('--bind',default='0.0.0.0');p.add_argument('--port',type=int,default=8772);a=p.parse_args()
-    server=ThreadingHTTPServer((a.bind,a.port),handler(a.data,{'127.0.0.1',a.tv_ip},CatalogueSync(a.data,a.db) if a.db else None))
-    print('TV recommendation relay on port '+str(a.port),flush=True);server.serve_forever()
+    routes=handler(a.data,{'127.0.0.1',a.tv_ip},CatalogueSync(a.data,a.db) if a.db else None,automatic_plots=True)
+    server=ThreadingHTTPServer((a.bind,a.port),routes)
+    try:
+        print('TV recommendation relay on port '+str(a.port),flush=True);server.serve_forever()
+    finally:
+        if routes.plot_collector:routes.plot_collector.stop()
+        server.server_close()
 if __name__=='__main__':main()
