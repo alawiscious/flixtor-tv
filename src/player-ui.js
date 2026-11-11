@@ -52,6 +52,8 @@ var FTV_PLAYER_UI=(function(){
     document.addEventListener('click',gearClick,true);
     function handleKey(e){
       var code=e.keyCode,key=e.key,active=document.activeElement;
+      // Hardware transport remains available while a settings menu owns focus.
+      if([19,415,10252,412,417].indexOf(code)!==-1||/^(MediaPause|MediaPlay|MediaPlayPause|MediaRewind|MediaFastForward)$/.test(key))return false;
       if((code===13||key==='Enter')&&e.repeat)return true;
       var back=code===10009||key==='Escape'||key==='BrowserBack';
       if(panel)reveal();
