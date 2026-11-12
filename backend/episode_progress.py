@@ -18,8 +18,8 @@ def blank():
 
 
 class EpisodeProgressStore:
-    def __init__(self,root):
-        self.root=Path(root);self.path=self.root/'episode-progress.sqlite';self.lock=threading.RLock()
+    def __init__(self,root,catalogue_root=None):
+        self.root=Path(root);self.catalogue_root=Path(catalogue_root) if catalogue_root else self.root;self.path=self.root/'episode-progress.sqlite';self.lock=threading.RLock()
         profile=json.loads((self.root/'matches.json').read_text()).get('profile')
         if not isinstance(profile,str) or not profile:raise ValueError('Invalid profile')
         self.profile=profile
@@ -35,7 +35,7 @@ class EpisodeProgressStore:
         finally:db.close()
 
     def validate_item(self,ident):
-        items=json.loads((self.root/'catalogue.json').read_text())
+        items=json.loads((self.catalogue_root/'catalogue.json').read_text())
         if not isinstance(ident,str) or not re.fullmatch(r'flixtor:tv:[0-9]{1,18}',ident) or ident not in items:
             raise ValueError('Choose a series from the current catalogue')
         # The canonical ID is authoritative; reject contradicting media metadata if supplied.

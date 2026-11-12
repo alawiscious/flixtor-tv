@@ -14,11 +14,15 @@ from urllib.parse import quote
 from personalize import catalogue
 
 def recommendation_payload(data_dir,feedback=None):
-    root=Path(data_dir);items=json.loads((root/'catalogue.json').read_text());matched=json.loads((root/'matches.json').read_text())
-    profile=matched['profile'];feedback=feedback or FeedbackStore(root);feedback.sync();states=feedback.states()
+    root=Path(data_dir);feedback=feedback or FeedbackStore(root);public_root=feedback.catalogue_root
+    items=json.loads((public_root/'catalogue.json').read_text());matched=json.loads((root/'matches.json').read_text())
+    profile=matched['profile'];states=feedback.states()
     with urllib.request.urlopen('http://127.0.0.1:8088/api/recommend/'+quote(profile,safe='')+'/playable?n=256',timeout=8) as res:ids=json.load(res)
     seen=set(matched['seen']);seeds=matched['seeds'];seed_ids={s['item']['id'] for s in seeds}
     feature_file=root/'recommendation-features.json';features=json.loads(feature_file.read_text()) if feature_file.exists() else {}
+    if public_root!=root:
+        shared=public_root/'recommendation-features.json'
+        if shared.exists():features.update({k:v for k,v in json.loads(shared.read_text()).items() if k in items})
     now=datetime.now(timezone.utc);packs=[]
     for seed in seeds:
         item=seed['item'];weight=3 if seed.get('feedback_type')=='like' else .35 if 'watchlist' in seed.get('source','') else 1

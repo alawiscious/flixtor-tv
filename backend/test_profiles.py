@@ -21,5 +21,6 @@ class ProfileTests(unittest.TestCase):
         def rec(root,store):return {'engine':'gorse','items':[],'scope':store.profile()}
         result=self.registry.bundle(rec);self.assertEqual(result['scope'],'old-household');self.assertEqual([p['id'] for p in result['profiles']],['household']+self.ids);self.assertFalse(any('root' in p for p in result['profiles']))
     def test_missing_registry_preserves_old_response(self):
-        r=RecommendationProfiles(self.default,self.root/'missing');self.assertEqual(r.bundle(lambda *_:{'engine':'gorse','items':[]}),{'engine':'gorse','items':[]})
+        r=RecommendationProfiles(self.default,self.root/'missing');result=r.bundle(lambda *_:{'engine':'gorse','items':[]})
+        self.assertEqual(result['engine'],'gorse');self.assertEqual(result['items'],[]);self.assertEqual(result['cacheStatus'],'fresh')
 if __name__=='__main__':unittest.main()

@@ -12,8 +12,8 @@ def gorse(path,payload=None,method=None):
     with urllib.request.urlopen(req,timeout=3) as response:return json.load(response)
 
 class FeedbackStore:
-    def __init__(self,root):
-        self.root=Path(root);self.path=self.root/'user-feedback.sqlite';self.lock=threading.RLock()
+    def __init__(self,root,catalogue_root=None):
+        self.root=Path(root);self.catalogue_root=Path(catalogue_root) if catalogue_root else self.root;self.path=self.root/'user-feedback.sqlite';self.lock=threading.RLock()
         with self.connect() as db:db.execute('create table if not exists feedback(profile text,item text,preference text not null default "clear",watched integer,at text not null,synced integer not null default 0,primary key(profile,item))')
         self.path.chmod(0o600)
     @contextmanager
@@ -28,7 +28,7 @@ class FeedbackStore:
         return {r['item']:dict(preference=r['preference'],watched=None if r['watched'] is None else bool(r['watched']),syncPending=not bool(r['synced']),at=r['at']) for r in rows}
     def save(self,payload):
         if not isinstance(payload,dict) or set(payload)-{'itemId','preference','watched'}:raise ValueError('Invalid feedback fields')
-        ident=payload.get('itemId');items=json.loads((self.root/'catalogue.json').read_text())
+        ident=payload.get('itemId');items=json.loads((self.catalogue_root/'catalogue.json').read_text())
         if not isinstance(ident,str) or ident not in items:raise ValueError('Choose a title from the current catalogue')
         if len(payload)==1:raise ValueError('Choose recommendation or watch feedback')
         preference=payload.get('preference','clear')
