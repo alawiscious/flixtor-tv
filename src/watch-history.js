@@ -1,12 +1,12 @@
 /* Read FlixTor-owned playback positions; resolve separate profile completion facts without inventing playback progress. */
 var FTV_HISTORY=(function(){
-  function parse(key,value){var k=/^pos:(\d+)(?::(\d+):(\d+))?$/.exec(key),v=String(value||'').split(':').map(Number);if(!k||v.length!==3||!v.every(function(n){return isFinite(n)&&n>=0;})||!v[1]||!v[2])return null;return {id:k[1],season:Number(k[2])||0,number:Number(k[3])||0,position:Math.min(v[0],v[1]),duration:v[1],timestamp:v[2],progress:Math.min(100,v[0]/v[1]*100),complete:v[0]/v[1]>=.98};}
+  function parse(key,value){var k=/^pos:(\d+)(?::(\d+):(\d+))?$/.exec(key),v=String(value||'').split(':').map(Number);if(!k||v.length!==3||!v.every(function(n){return isFinite(n)&&n>=0;})||!v[1]||!v[2])return null;return {id:k[1],type:k[2]===undefined?'movie':'tv',season:Number(k[2])||0,number:Number(k[3])||0,position:Math.min(v[0],v[1]),duration:v[1],timestamp:v[2],progress:Math.min(100,v[0]/v[1]*100),complete:v[0]/v[1]>=.98};}
   function records(){var out=[];try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('pos:')===0){var p=parse(k,localStorage.getItem(k));if(p)out.push(p);}}}catch(_){}return out.sort(function(a,b){return b.timestamp-a.timestamp;});}
-  function latest(id,series){return records().filter(function(p){return p.id===String(id)&&!!p.season===!!series;})[0]||null;}
+  function latest(id,series){return records().filter(function(p){return p.id===String(id)&&(p.type==='tv')===!!series;})[0]||null;}
   function applyProgress(item,p){if(p){item.resume=p;item.progress=p.progress;}return item;}
-  function decorateAll(items){var index=Object.create(null);records().forEach(function(p){var key=p.id+':'+String(!!p.season);if(!index[key])index[key]=p;});return items.map(function(item){var m=(item.url||'').match(/\/watch\/(tv|movie)\/(\d+)/);return applyProgress(item,m&&index[m[2]+':'+String(m[1]==='tv')]);});}
+  function decorateAll(items){var index=Object.create(null);records().forEach(function(p){var key=p.id+':'+String(p.type==='tv');if(!index[key])index[key]=p;});return items.map(function(item){var m=(item.url||'').match(/\/watch\/(tv|movie)\/(\d+)/);return applyProgress(item,m&&index[m[2]+':'+String(m[1]==='tv')]);});}
   function decorate(item){var m=(item.url||'').match(/\/watch\/(tv|movie)\/(\d+)/),p=m&&latest(m[2],m[1]==='tv');return applyProgress(item,p);}
-  function label(p){return (p.season?'S'+p.season+' · E'+p.number+' · ':'')+(p.complete?'Watched':Math.floor(p.position/60)+' min watched · '+Math.ceil((p.duration-p.position)/60)+' min left');}
+  function label(p){return (p.number?'S'+p.season+' · E'+p.number+' · ':'')+(p.complete?'Watched':Math.floor(p.position/60)+' min watched · '+Math.ceil((p.duration-p.position)/60)+' min left');}
   function next(episodes,current){var sorted=episodes.slice().sort(function(a,b){return a.season-b.season||a.number-b.number;});for(var i=0;i<sorted.length;i++)if(sorted[i].season===current.season&&sorted[i].number===current.number)return sorted[i+1]||null;return null;}
   function episodeNumber(n){return typeof n==='number'&&isFinite(n)&&n>0&&Math.floor(n)===n;}
   // Explicit completion facts take precedence; native progress remains untouched.
