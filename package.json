@@ -1,12 +1,12 @@
 {
   "name": "flixtor-tv-prototype",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "private": true,
   "description": "Remote-first FlixTor interface prototype for TizenBrew",
   "packageType": "mods",
   "appName": "FlixTor TV",
   "websiteURL": "https://flixtor.to/home",
-  "main": "tv-0.3.12.js",
+  "main": "tv-0.3.13.js",
   "keys": [
     "MediaPlayPause",
     "MediaPlay",
@@ -15,12 +15,12 @@
     "MediaFastForward"
   ],
   "files": [
-    "tv-0.3.12.js",
+    "tv-0.3.13.js",
     "service.js"
   ],
   "scripts": {
     "build": "node build.cjs",
-    "check": "node check.cjs && node test-profile-dialog.cjs && node test-catalogue-navigation.cjs && node test-recommendation-feedback.cjs && node test-player-navigation.cjs && node test-watch-history.cjs && node test-playback-power.cjs && node test-updater.cjs && node test-updater-http.cjs"
+    "check": "node check.cjs && node test-profile-dialog.cjs && node test-catalogue-navigation.cjs && node test-discovery-navigation.cjs && node test-recommendation-cache.cjs && node test-recommendation-feedback.cjs && node test-player-navigation.cjs && node test-watch-history.cjs && node test-playback-power.cjs && node test-updater.cjs && node test-updater-http.cjs"
   },
   "serviceFile": "service.js"
 }

@@ -9,7 +9,7 @@ function fixture(){
   function element(tag,cls,text){return {tagName:String(tag).toUpperCase(),className:cls||'',textContent:text||'',children:[],isConnected:true,appendChild(child){this.children.push(child);child.parentNode=this;return child;},querySelector(selector){const nodes=[];function collect(n){n.children.forEach(c=>{nodes.push(c);collect(c);});}collect(this);if(selector==='.choice-row button')return nodes.find(n=>n.tagName==='BUTTON'&&n.parentNode.className==='choice-row')||null;return nodes.find(n=>n.tagName==='BUTTON')||null;},remove(){this.isConnected=false;},contains(node){return this===node||this.children.some(c=>c.contains(node));}};}
   function allButtons(root){let result=[];(root.children||[]).forEach(c=>{if(c.tagName==='BUTTON')result.push(c);result.push(...allButtons(c));});return result;}
   context={preview:false,localShell:true,profilePacks:[],selectedProfile:'',profileRequest:null,profilePrompted:false,pendingClose:false,
-    recommendationState:'idle',connectRecommendations:true,tab:'Home',dialog:null,detailItem:null,bridgeOrigin:'http://fixture',
+    recommendations:[],lastRecommendationBundle:null,recommendationOffline:false,recommendationRetryTimer:null,setTimeout(){return 1;},clearTimeout(){},recommendationState:'idle',connectRecommendations:true,tab:'Home',dialog:null,detailItem:null,bridgeOrigin:'http://fixture',
     document:{activeElement:{tagName:'BUTTON'}},sessionStorage:{setItem(){}},
     node:element,append(parent,...children){children.forEach(c=>parent.appendChild(c));return parent;},
     row(parent,cls){return parent.appendChild(element('div',cls));},

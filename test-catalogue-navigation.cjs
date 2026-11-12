@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/src/app.js','utf8');
-const ctx={URL,location:{assign(url){ctx.assigned=url;}},sessionStorage:{setItem(){},removeItem(){}},main:{classList:{add(){}}},sort:'Featured',nativeFilters:()=>true,sourceHref:()=> 'https://flixtor.to/show/movies?yrf=2000&rating=7&page=4',sourcePath:()=>'/show/movies',rememberView(){},toast(message){throw new Error(message);}};
+const ctx={URL,location:{assign(url){ctx.assigned=url;}},sessionStorage:{setItem(){},removeItem(){}},main:{classList:{add(){}}},sort:'Featured',navigateCatalogue(url){ctx.location.assign(url);},nativeFilters:()=>true,sourceHref:()=> 'https://flixtor.to/show/movies?yrf=2000&rating=7&page=4',sourcePath:()=>'/show/movies',rememberView(){},toast(message){throw new Error(message);}};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/src/filters.js','utf8'),ctx);
 vm.runInContext(source.slice(source.indexOf('  function changeCatalogueFilter('),source.indexOf('  function chooseFilterYear(')),ctx);
 ctx.changeCatalogueFilter('genre','Science-Fiction');let u=new URL(ctx.assigned);

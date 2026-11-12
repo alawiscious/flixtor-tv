@@ -5,7 +5,7 @@ function fixture(){
  const controls=[],requests=[];
  function el(tag,cls,text){return {textContent:text||'',dataset:{},children:[],classList:{toggle(){}},setAttribute(k,v){this[k]=v;},appendChild(c){this.children.push(c);if(!this.firstChild)this.firstChild=c;return c;}};}
  const item={title:'Example series',url:'/tv/42',profileId:'alec',feedback:{}};
- const context={main:{querySelector(){return null;}},preserveRender(){context.renders=(context.renders||0)+1;},document:{activeElement:null},profilePacks:[],returnFocus:null,dialog:{},recommendationsDirty:false,connectRecommendations:true,selectedProfile:'alec',bridgeOrigin:'http://fixture',recommendations:[{...item,title:'First',url:'/tv/41'},item,{...item,title:'Last',url:'/tv/43'}],
+ const context={main:{querySelector(){return null;}},preserveRender(){context.renders=(context.renders||0)+1;},document:{activeElement:null},lastRecommendationBundle:null,profilePacks:[],returnFocus:null,dialog:{},recommendationsDirty:false,connectRecommendations:true,selectedProfile:'alec',bridgeOrigin:'http://fixture',recommendations:[{...item,title:'First',url:'/tv/41'},item,{...item,title:'Last',url:'/tv/43'}],
   startDialog(){return el();},node:el,row(parent,cls){return parent.appendChild(el('div',cls));},append(p,...cs){cs.forEach(c=>p.appendChild(c));},
   button(label,fn){const b=el('button','',label);b.click=()=>{context.document.activeElement=b;fn();};controls.push(b);return b;},focus(b){context.document.activeElement=b;},
   meta(){return el();},tv(){return true;},pid(){return '42';},itemKey(i){return i.url;},
