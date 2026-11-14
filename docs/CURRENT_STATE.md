@@ -59,9 +59,12 @@ tests) since 0.3.14.
   updates. For You and profile feedback will fail there with "Start the recommendation relay".
 - Changing the recommendation endpoint changes the TV **service**, so it needs a module
   reinstall. A signed UI payload cannot change it (see `UPDATING.md`).
-- **OPEN:** the owner reports that recommendations were moved outside the home network. No
-  evidence of that deployment exists here. Its endpoint, auth model and profile isolation must be
-  identified before any TV is pointed at it.
+- **OPEN:** the owner reports that recommendations were moved outside the home network. A full
+  search on 2026-11-14 found no such deployment: no cloud project (Vercel lists none for FlixTor),
+  no tunnel or remote Docker host, no backend repo, and no running relay outside the home Mac. The
+  relay has no token authentication; it allows requests by source IP only. If that work exists, it
+  was done in the former cloud workspace and is not in this repository. Its endpoint, auth model
+  and profile isolation must be identified before any TV is pointed at it.
 
 ## 5. Signed update and release path
 
@@ -97,5 +100,5 @@ macOS runs the HTTP updater test natively. The `spawn E2BIG` failure was Linux-o
 
 - **Playback → Back → frozen details → crash on Samsung.** Fix released in 0.3.14. It passes in
   Chrome; its probable cause is not confirmed and it is not yet verified on a Samsung TV.
-- The Home hero long-title layout fix (fixed hero height overflowing into the next rail) was
-  never committed. It must be rebuilt as its own change.
+- Home hero long-title overflow (title clipped, actions cut off): fix proposed in PR #3
+  (`fix/home-hero-layout`). Not yet released.
