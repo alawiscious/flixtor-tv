@@ -1,6 +1,6 @@
 # Plan: recommendations for a TV on another network
 
-Status: **proposal, awaiting decisions (§7)**. Written 2026-11-14. It supersedes the delivery parts of
+Status: **decided (§7); phase 1 in progress**. Written 2026-11-14. It supersedes the delivery parts of
 `CLOUD_MIGRATION.md` if option A is chosen.
 
 ## 1. Goal
@@ -123,10 +123,11 @@ remote / not paired) and clear errors: code expired, server unreachable, removed
 
 Phases 1–4 are reviewable PRs. Nothing is exposed publicly until phase 2, after the auth tests pass.
 
-## 7. Decisions needed
+## 7. Decisions (2026-11-14)
 
-1. **Hosting:** A (Funnel to the Mini), B (VPS) or C (Vercel + Supabase).
-2. **Ellie's profile:** is she one of the five imported Netflix viewers, or a new viewer (cold
-   start from her feedback, or a separate history import)? Should her TV see only her profile or
-   the whole household's?
-3. **Alec's TV:** stay on the LAN relay (default) or also pair to the remote endpoint.
+1. **Hosting:** option A, Funnel to the Mini. Phase 2 (turning on Funnel and changing the
+   LaunchAgent) still needs an explicit go-ahead at that point.
+2. **Second TV's scope:** exactly one existing imported Netflix viewer profile. No household pack,
+   no other viewers. The profile is chosen at pairing time on the Mini; names are not recorded in
+   this repository.
+3. **Alec's TV:** stays on the LAN relay, unchanged.
