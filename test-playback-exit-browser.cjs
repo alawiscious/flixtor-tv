@@ -6,13 +6,13 @@
 //   node test-playback-exit-browser.cjs                 # current sources (bundle.cjs)
 //   FTV_BUNDLE_FILE=tv.js node test-playback-exit-browser.cjs   # a generated bundle, e.g. 0.3.13
 'use strict';
-const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
+const fs=require('node:fs'),path=require('node:path');
+const {launch,openPage:openRoutedPage,sleep,requireChrome}=require('./browser-harness.cjs');
 const assert=require('node:assert/strict');
 
 const root=__dirname;
 const bundle=process.env.FTV_BUNDLE_FILE?fs.readFileSync(path.resolve(root,process.env.FTV_BUNDLE_FILE),'utf8'):require('./bundle.cjs').appBundle(root);
-const chromePath=[process.env.CHROME_PATH,'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/chromium','/usr/bin/google-chrome'].filter(Boolean).find(p=>fs.existsSync(p));
-if(!chromePath){console.error('FAIL: no Chrome/Chromium found; set CHROME_PATH. This browser test was NOT run.');process.exit(1);}
+const chromePath=requireChrome();
 
 // One second of silent 8 kHz PCM WAV, looped by the <video>, so play/pause events are real.
 function silentWav(){const n=8000,b=Buffer.alloc(44+n);b.write('RIFF',0);b.writeUInt32LE(36+n,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(8000,28);b.writeUInt16LE(1,32);b.writeUInt16LE(8,34);b.write('data',36);b.writeUInt32LE(n,40);b.fill(128,44);return 'data:audio/wav;base64,'+b.toString('base64');}
@@ -56,37 +56,13 @@ const fixture=`<!doctype html><html><head><meta charset="utf-8"><title>Fixture w
 <script>${bundle.replace(/<\/script/gi,'<\\/script')}</script>
 </body></html>`;
 
-// --- Minimal DevTools protocol client (Node's built-in WebSocket) -----------------------------
-async function launch(){
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ftv-exit-'));
-  const proc=spawn(chromePath,['--headless=new','--remote-debugging-port=0','--user-data-dir='+dir,'--no-first-run','--no-default-browser-check','--mute-audio','--autoplay-policy=no-user-gesture-required','--window-size=1920,1080','about:blank'],{stdio:'ignore'});
-  const portFile=path.join(dir,'DevToolsActivePort');
-  for(let i=0;i<200&&!fs.existsSync(portFile);i++)await new Promise(r=>setTimeout(r,50));
-  const [port,wsPath]=fs.readFileSync(portFile,'utf8').trim().split('\n');
-  const ws=new WebSocket('ws://127.0.0.1:'+port+wsPath);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j;});
-  let id=0;const pending=new Map(),handlers=[];
-  ws.onmessage=m=>{const d=JSON.parse(m.data);if(d.id&&pending.has(d.id)){const p=pending.get(d.id);pending.delete(d.id);d.error?p.j(Error(d.error.message)):p.r(d.result);}else handlers.forEach(h=>h(d));};
-  const send=(method,params={},sessionId)=>new Promise((r,j)=>{const n=++id;pending.set(n,{r,j});ws.send(JSON.stringify({id:n,method,params,sessionId}));});
-  return {send,on:h=>handlers.push(h),close(){try{ws.close();}catch(_){}proc.kill('SIGKILL');setTimeout(()=>fs.rmSync(dir,{recursive:true,force:true}),300);}};
-}
-
+// Every request is answered locally: the fixture for the watch document, nothing else.
 async function openPage(cdp,url){
-  const {targetId}=await cdp.send('Target.createTarget',{url:'about:blank'});
-  const {sessionId}=await cdp.send('Target.attachToTarget',{targetId,flatten:true});
-  const s=(m,p)=>cdp.send(m,p,sessionId);
-  cdp.on(d=>{if(d.sessionId!==sessionId||d.method!=='Fetch.requestPaused')return;const u=d.params.request.url;
-    if(/^https:\/\/flixtor\.to\/watch\//.test(u)&&d.params.resourceType==='Document')s('Fetch.fulfillRequest',{requestId:d.params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:Buffer.from(fixture).toString('base64')});
-    else s('Fetch.failRequest',{requestId:d.params.requestId,errorReason:'BlockedByClient'});});
-  await s('Fetch.enable',{patterns:[{urlPattern:'*'}]});await s('Page.enable');await s('Runtime.enable');
-  await s('Page.navigate',{url});
-  const evaluate=async expr=>{const r=await s('Runtime.evaluate',{expression:expr,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception&&r.exceptionDetails.exception.description||r.exceptionDetails.text);return r.result.value;};
-  for(let i=0;i<100;i++){if(await evaluate('!!document.getElementById("ftv")&&!!document.querySelector("#ftv .overlay")').catch(()=>false))break;await sleep(50);}
-  const key=async(name,opts={})=>{const codes={Escape:27,Back:10009,ArrowUp:38,ArrowDown:40,ArrowLeft:37,ArrowRight:39,Enter:13};const k=name==='Back'?'':name;
-    await s('Input.dispatchKeyEvent',{type:'rawKeyDown',key:k,code:k,windowsVirtualKeyCode:codes[name],nativeVirtualKeyCode:codes[name],autoRepeat:!!opts.repeat});
-    await s('Input.dispatchKeyEvent',{type:'keyUp',key:k,code:k,windowsVirtualKeyCode:codes[name],nativeVirtualKeyCode:codes[name]});};
-  return {evaluate,key,close:()=>cdp.send('Target.closeTarget',{targetId})};
+  const page=await openRoutedPage(cdp,url,(u,type)=>/^https:\/\/flixtor\.to\/watch\//.test(u)&&type==='Document'?fixture:null);
+  await page.navigate();
+  for(let i=0;i<100;i++){if(await page.evaluate('!!document.getElementById("ftv")&&!!document.querySelector("#ftv .overlay")').catch(()=>false))break;await sleep(50);}
+  return page;
 }
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const URL_MOVIE='https://flixtor.to/watch/movie/1212-twelve-twelve-twelve#ftv-details';
 
 const STATE=`(function(){var h=document.getElementById('ftv'),v=document.getElementById('v'),a=document.activeElement,F=window.FIXTURE;
@@ -98,7 +74,7 @@ const PLAY=`(function(){var b=Array.prototype.find.call(document.querySelectorAl
 async function scenario(cdp,name,fn){const page=await openPage(cdp,URL_MOVIE);try{await fn(page);console.log('  ok  '+name);return null;}catch(e){console.log('  FAIL '+name+'\n       '+e.message.split('\n')[0]);return name;}finally{await page.close();}}
 
 (async()=>{
-  const cdp=await launch();const failures=[];
+  const cdp=await launch(['--autoplay-policy=no-user-gesture-required']);const failures=[];
   try{
     console.log('Bundle: '+(process.env.FTV_BUNDLE_FILE||'current sources via bundle.cjs')+' · Chrome: '+path.basename(chromePath));
     failures.push(await scenario(cdp,'movie playback -> Back -> usable details',async p=>{
