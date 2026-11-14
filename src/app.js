@@ -462,7 +462,8 @@
   function directional(e){
     if(!host||pendingClose||playbackActive)return;if(host.style.display==='none'){originalDirectional(e);return;}var code=e.keyCode,key=e.key;var dir={37:'left',38:'up',39:'right',40:'down'}[code]||{ArrowLeft:'left',ArrowUp:'up',ArrowRight:'right',ArrowDown:'down'}[key];var current=document.activeElement,scope=dialog||host;
     function handled(){e.preventDefault();e.stopImmediatePropagation();}
-    if(code===10009||key==='Escape'||key==='BrowserBack'){handled();back();return;}
+    // A held or repeated Back that ended playback must not also leave the details page.
+    if(code===10009||key==='Escape'||key==='BrowserBack'){handled();if(!e.repeat&&Date.now()-playbackExitAt>=BACK_SETTLE_MS)back();return;}
     if(current&&scope.contains(current)&&current.tagName==='INPUT'){if((code===13||key==='Enter')&&current.classList.contains('search-input')){handled();runCatalogueSearch();return;}if(dir==='down'){handled();focus(main.querySelector('.keyboard button')||main.querySelector('.card'));}else if(dir==='up'){handled();focus(nav.querySelector('.active'));}return;}
     var candidates=list(scope,'button,input,[data-focus-copy]').filter(isVisible);
     if(key==='Tab'){handled();var n=candidates.indexOf(current)+(e.shiftKey?-1:1);focus(candidates[(n+candidates.length)%candidates.length]);return;}
@@ -500,7 +501,7 @@
     if(localShell&&window.FTV_UPDATE_TOKEN)setTimeout(function(){updateRequest('healthy',{version:FTV_VERSION},function(){});},500);
     if(localShell){var pending=incomingPlots?{batch:incomingPlots,more:collectMore}:null;if(!pending){try{pending=JSON.parse(sessionStorage.getItem('ftv.pendingPlots')||'null');}catch(_){}}if(pending)savePlotBatch(pending.batch,pending.more);}
     var title=!preview&&/^\/watch\//.test(location.pathname)?sourceTitle():null;if(title){if(similarMode)showSimilar(title);else showDetail(title,nav.querySelector('button'));}uncoverSource();
-    if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(changes.every(function(c){return host.contains(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
+    if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(playbackActive||changes.every(function(c){return host.contains(c.target)||inPlayer(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){if(playbackActive)return;var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
   }
   function boot(){
     if(!explicitOriginal){try{sessionStorage.removeItem('ftv.original.v1');}catch(_){}}
@@ -515,7 +516,10 @@
     function ready(){if(handoff)sourceHandoff();else{mount();if(explicitOriginal){showOriginal();if(location.hash==='#ftv-search')nativeSearch();}}}
     if(!preview&&!all.length&&!sourceTitle()&&!localShell){var done=false,observer,timer;function checkReady(force){refreshCards();if(!done&&(all.length||sourceTitle()||force)){done=true;clearTimeout(timer);if(observer)observer.disconnect();ready();}}if(window.MutationObserver){observer=new MutationObserver(function(){checkReady(false);});observer.observe(document.body,{childList:true,subtree:true});}timer=setTimeout(function(){checkReady(true);},4800);checkReady(false);}else ready();
   }
-  var playbackActive=false,playbackTimer=null,playerUI=null,playbackPower=null,nextEpisode=null;
+  var playbackActive=false,playbackTimer=null,playerUI=null,playbackPower=null,nextEpisode=null,playbackExitAt=0,BACK_SETTLE_MS=700;
+  function jwPlayer(){try{return typeof window.jwplayer==='function'?window.jwplayer('player'):null;}catch(_){return null;}}
+  function playerVideo(){return document.querySelector('#player video, #playerwrapper video')||document.querySelector('video');}
+  function inPlayer(target){var wrapper=document.getElementById('playerwrapper');return !!wrapper&&wrapper.contains(target);}
   function startPlayback(){
     if(nextEpisode){nextEpisode.destroy();nextEpisode=null;}
     if(playbackPower){playbackPower.destroy();playbackPower=null;}
@@ -534,7 +538,7 @@
       var controlsRoot=document.getElementById('ftv-player-controls'),playerElement=document.querySelector('#player.jwplayer');if(controlsRoot&&playerElement&&controlsRoot.parentNode!==playerElement)playerElement.appendChild(controlsRoot);
       var audioPlayer=null;try{if(typeof window.jwplayer==='function')audioPlayer=window.jwplayer('player');}catch(_){}
       var video=document.querySelector('#player video, #playerwrapper video');
-      if(video&&!videoStarted){videoStarted=true;FTV_PLAYER.setSound(audioPlayer,video,true);var promise=video.play();if(promise&&promise.catch)promise.catch(function(){});}
+      if(video&&!videoStarted){videoStarted=true;FTV_PLAYER.setSound(audioPlayer,video,true);var idle=false;try{idle=!!audioPlayer&&typeof audioPlayer.play==='function'&&audioPlayer.getState()==='idle';}catch(_){}if(idle)audioPlayer.play();else{var promise=video.play();if(promise&&promise.catch)promise.catch(function(){});}}
       if(!audioStarted&&video&&video.readyState>=2)audioStarted=FTV_PLAYER.setSound(audioPlayer,video,true);
       if(!qualityPicked&&video&&video.readyState>=2&&typeof window.jwplayer==='function'){
         qualityPicked=FTV_PLAYER.preferHighest(window.jwplayer('player'));
@@ -557,7 +561,7 @@
       if(playerUI&&playerUI.handleKey(e)){e.preventDefault();e.stopImmediatePropagation();return;}
       var code=e.keyCode,key=e.key,view=savedView();
       if((code===10009||key==='Escape')&&detailsMode){
-        e.preventDefault();e.stopImmediatePropagation();playbackActive=false;if(nextEpisode){nextEpisode.destroy();nextEpisode=null;}if(playbackPower){playbackPower.destroy();playbackPower=null;}if(playerUI){playerUI.destroy();playerUI=null;}clearInterval(playbackTimer);var currentVideo=document.querySelector('video');if(currentVideo)currentVideo.pause();document.documentElement.classList.remove('ftv-cinema');if(host){host.style.display='block';showDetail(sourceTitle(),nav.querySelector('button'));}return;
+        e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)exitPlayback();return;
       }
 
       if((code===10009||key==='Escape')&&((location.hash==='#ftv-return'||/^#ftv-play(?:=|$)/.test(location.hash))||document.referrer.indexOf('http://127.0.0.1:8773/')===0)){e.preventDefault();e.stopImmediatePropagation();history.back();return;}
@@ -569,7 +573,29 @@
       if(action==='play'||(action==='toggle'&&video.paused)){var play=video.play();if(play&&play.catch)play.catch(function(){});}else if(action==='pause'||action==='toggle')video.pause();else if(isFinite(video.duration))video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+(action==='forward'?10:-10)));
     },true);
   }
-  document.addEventListener('play',function(e){if(detailsMode&&!playbackActive&&e.target.tagName==='VIDEO')e.target.pause();},true);
+  // Details pages hold native autoplay paused through the player API, with a bounded guard: a
+  // player that keeps restarting is stopped once, never paused in an endless event loop.
+  var detailsPause=FTV_PLAYBACK_EXIT.pauseGuard({isActive:function(){return detailsMode&&!playbackActive;},pause:function(video){FTV_PLAYBACK_EXIT.pausePlayer(jwPlayer(),video);},stop:function(video){var jw=jwPlayer();try{if(jw&&typeof jw.stop==='function')jw.stop();}catch(_){}try{if(!video.paused)video.pause();}catch(_){}}});
+  document.addEventListener('play',detailsPause.onPlay,true);
+  // One idempotent exit: repeated Back presses and late callbacks cannot rerun teardown, and a
+  // failing step cannot leave the details page hidden or unfocused.
+  function exitPlayback(){
+    if(!playbackActive)return false;
+    playbackActive=false;playbackExitAt=Date.now();
+    FTV_PLAYBACK_EXIT.run([
+      function(){clearInterval(playbackTimer);playbackTimer=null;},
+      function(){detailsPause.reset();},
+      function(){FTV_PLAYBACK_EXIT.pausePlayer(jwPlayer(),playerVideo());},
+      function(){if(nextEpisode){var n=nextEpisode;nextEpisode=null;n.destroy();}},
+      function(){if(playbackPower){var p=playbackPower;playbackPower=null;p.destroy();}},
+      function(){if(playerUI){var u=playerUI;playerUI=null;u.destroy();}},
+      function(){document.documentElement.classList.remove('ftv-cinema');},
+      function(){if(host)host.style.display='block';},
+      function(){var title=sourceTitle();if(host&&title)showDetail(title,nav.querySelector('button'));},
+      function(){if(host&&!host.contains(document.activeElement))focus(host.querySelector('.overlay .actions button')||nav.querySelector('.active')||nav.querySelector('button'));}
+    ]);
+    return true;
+  }
   coverSource();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }());
