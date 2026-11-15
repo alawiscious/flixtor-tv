@@ -30,7 +30,7 @@ function remoteServer(tls){const seen=[];const s=https.createServer(tls,(req,res
   if(req.url==='/recommendations')return reply(200,{engine:'gorse',id:'ftv-netflix-'+'a'.repeat(16),items:[],profiles:[]});
   if(req.url==='/feedback')return reply(200,{saved:true,echo:JSON.parse(body)});
   reply(404,{error:'Not found'});});});return {server:s,seen};}
-const lanSeen=[];const lan=http.createServer((req,res)=>{lanSeen.push(req.url);res.writeHead(200,{'Content-Type':'application/json'});res.end('{"lan":true}');});
+const lanSeen=[],lanBodies=[];const lan=http.createServer((req,res)=>{lanSeen.push(req.url);let b='';req.on('data',c=>b+=c);req.on('end',()=>{lanBodies.push({url:req.url,body:b});res.writeHead(200,{'Content-Type':'application/json'});res.end(req.url==='/feedback'?'{"saved":true,"state":{"preference":"like","watched":true,"rating":"love"}}':'{"lan":true}');});});
 // No host: dual-stack, so 'localhost' works whether it resolves to ::1 or 127.0.0.1.
 const listen=s=>new Promise(r=>s.listen(0,()=>r(s.address().port)));
 
@@ -63,6 +63,18 @@ function startService(trust,cache,lanPort){
   // Unpaired: LAN relay, remote untouched.
   assert.deepEqual((await svc.call('/connection')).json,{mode:'lan',paired:false,label:'',profiles:[],lastSource:'',error:''});
   let r=await svc.call('/recommendations');assert.equal(r.source,'lan');assert.equal(r.json.lan,true);assert.equal(A.seen.length,0);
+
+  // flixtor.to details pages: a rating and nothing else; the reply never includes stored state.
+  const SITE='https://flixtor.to',rating={profileId:'household',itemId:'flixtor:movie:603692',rating:'love'};
+  r=await svc.call('/feedback',rating,{from:SITE});assert.equal(r.code,200,r.body);assert.deepEqual(r.json,{saved:true},'no state echoed to the site');
+  assert.deepEqual(JSON.parse(lanBodies.at(-1).body),rating,'forwarded exactly');
+  for(const bad of [{...rating,preference:'like'},{...rating,watched:false},{...rating,rating:'meh'},{...rating,itemId:'../x'},{...rating,profileId:'other'},[]])
+    assert.equal((await svc.call('/feedback',bad,{from:SITE})).code,400,JSON.stringify(bad));
+  assert.equal((await svc.call('/feedback',{...rating,rating:null},{from:SITE})).code,200,'clearing a rating is allowed');
+  for(const route of ['/recommendations','/connection','/plots','/updates/status'])assert.equal((await new Promise((ok,no)=>{const q=http.request({host:'127.0.0.1',port:Number(svc.origin.split(':')[2]),path:route,headers:{Origin:SITE}},res=>{res.resume();res.on('end',()=>ok(res.statusCode));});q.on('error',no);q.end();})),403,'site cannot read '+route);
+  assert.equal((await svc.call('/pair',{code:'GOOD-CODE'},{from:SITE})).code,403);assert.equal((await svc.call('/catalogue',[],{from:SITE})).code,403);
+  const pre=await new Promise((ok,no)=>{const q=http.request({host:'127.0.0.1',port:Number(svc.origin.split(':')[2]),path:'/feedback',method:'OPTIONS',headers:{Origin:SITE,'Access-Control-Request-Method':'POST','Access-Control-Request-Private-Network':'true'}},res=>{res.resume();res.on('end',()=>ok(res));});q.on('error',no);q.end();});
+  assert.equal(pre.statusCode,204);assert.equal(pre.headers['access-control-allow-origin'],SITE);assert.equal(pre.headers['access-control-allow-private-network'],'true');
 
   // State-changing endpoints need the bridge origin AND the shell token (origin shadowing fixed).
   assert.equal((await svc.call('/pair',{code:'GOOD-CODE'})).code,403,'no token');
@@ -121,5 +133,5 @@ function startService(trust,cache,lanPort){
     for(const [name,re] of [['arrow function',/=>/],['let/const',/\b(let|const)\s/],['template literal',/`/],['class',/\bclass\s+[A-Z]/],['spread/rest',/\.\.\.[a-zA-Z]/],['async/await',/\b(async|await)\b/]])
       assert(!re.test(src),f+' uses '+name);
   }
-  console.log('PASS: remote pairing over pinned HTTPS, token stored mode 600 and never shown to the page, paired remote > LAN with no silent fallback, revoke/forget/restart, bridge-origin gate, wrong CA/hostname rejected before any request, ES5 lexical check.');
+  console.log('PASS: flixtor.to may post a rating only (validated, no state echoed, no reads/pairing), remote pairing over pinned HTTPS, token stored mode 600 and never shown to the page, paired remote > LAN with no silent fallback, revoke/forget/restart, bridge-origin gate, wrong CA/hostname rejected before any request, ES5 lexical check.');
 }finally{for(const s of services)await s.stop();lan.close();fs.rmSync(dir,{recursive:true,force:true});}})().then(()=>process.exit(process.exitCode||0)).catch(e=>{console.error(e);process.exit(1);});
