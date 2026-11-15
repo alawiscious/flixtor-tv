@@ -31,9 +31,26 @@
   }
   if(process.env.FTV_UPDATES_OFF!=='1'){setTimeout(function(){updater.check();},3000);setInterval(function(){updater.check();},300000);}
   var allowedOrigins = ['http://127.0.0.1:'+localPort, 'http://127.0.0.1:8765', 'http://localhost:8765'];
+  // FlixTor details pages (and therefore any script on flixtor.to) may save a rating and nothing else:
+  // no reading recommendations, no interest/watch changes, no pairing or updates. The answer is {saved}.
+  var SITE_ORIGIN='https://flixtor.to',SITE_RATINGS=['love','like','dislike','hate'];
+  function siteRating(v){return !!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(function(k){return k==='profileId'||k==='itemId'||k==='rating';})&&
+    typeof v.itemId==='string'&&/^flixtor:(tv|movie):\d{1,18}$/.test(v.itemId)&&typeof v.profileId==='string'&&/^(household|ftv-netflix-[a-f0-9]{16})$/.test(v.profileId)&&(v.rating===null||SITE_RATINGS.indexOf(v.rating)>=0);}
+  function siteRequest(req,res){
+    res.setHeader('Access-Control-Allow-Origin',SITE_ORIGIN);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Private-Network','true');
+    res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type');res.setHeader('Cache-Control','no-store');
+    if(req.url!=='/feedback'||(req.method!=='POST'&&req.method!=='OPTIONS')){res.writeHead(403);res.end();return;}
+    if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
+    if(req.headers['content-type']!=='application/json'){json(res,415,{saved:false});return;}
+    readBody(req,1000,function(value){
+      if(!siteRating(value)){json(res,400,{saved:false,error:'Only a rating can be saved from this page'});return;}
+      remote.forward('/feedback','POST',JSON.stringify({profileId:value.profileId,itemId:value.itemId,rating:value.rating}),function(code){json(res,code===200?200:code,{saved:code===200});});
+    });
+  }
   var server = http.createServer(function (req, res) {
     if(req.method==='GET'&&(req.url==='/tv'||req.url==='/launch')){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://img.xcdn.to https://image.tmdb.org data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(req.url==='/launch'?launchPage():shellFor(updater.select()));return;}
     var origin = req.headers.origin;
+    if (origin === SITE_ORIGIN) { siteRequest(req, res); return; }
     if (origin && allowedOrigins.indexOf(origin) < 0) { res.writeHead(403); res.end(); return; }
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');

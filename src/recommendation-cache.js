@@ -7,7 +7,7 @@ var FTV_RECOMMEND_CACHE=(function(){
   function profile(value){return typeof value==='string'&&/^(household|ftv-netflix-[a-f0-9]{16})$/.test(value);}
   function integer(value,min,max){return typeof value==='number'&&isFinite(value)&&Math.floor(value)===value&&value>=min&&value<=max;}
   function address(value,image){try{var u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)return '';if(image)return ['img.xcdn.to','image.tmdb.org'].indexOf(u.hostname)!==-1?u.origin+u.pathname:'';return u.origin==='https://flixtor.to'&&/^\/watch\/(tv|movie)\/[0-9]{1,18}(?:\/|$)/.test(u.pathname)?u.origin+u.pathname:'';}catch(_){return '';}}
-  function feedback(value){var out={};if(!object(value))return out;if(['like','dislike','clear'].indexOf(value.preference)!==-1)out.preference=value.preference;if(value.watched===null||typeof value.watched==='boolean')out.watched=value.watched;return out;}
+  function feedback(value){var out={};if(!object(value))return out;if(['like','dislike','clear'].indexOf(value.preference)!==-1)out.preference=value.preference;if(value.watched===null||typeof value.watched==='boolean')out.watched=value.watched;if(value.rating===null||['love','like','dislike','hate'].indexOf(value.rating)!==-1)out.rating=value.rating;return out;}
   function progress(value){var out={};if(!object(value))return out;Object.keys(value).slice(0,500).forEach(function(id){
     var f=value[id];if(!/^flixtor:tv:[0-9]{1,18}$/.test(id)||!object(f))return;
     var clean={completedSeasons:[],completedThrough:null,episodes:{}},seen={};

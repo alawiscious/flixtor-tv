@@ -18,15 +18,20 @@
   }
   var similarMode=/^#ftv-similar(?:=|$)/.test(location.hash);
   var detailsMode=similarMode||/^#ftv-details(?:=|$)/.test(location.hash);
+  // After-watching ratings; same values as backend feedback.RATINGS.
+  var RATING_OPTIONS=[['love','Loved it'],['like','Liked it'],['dislike','Didn\u2019t like it'],['hate','Hated it']],RATING_VALUES=RATING_OPTIONS.map(function(o){return o[0];});
   var episodeContext={profileId:'',titles:{}};
   try{var contextHash=/^#ftv-(?:details|play|similar)=(.+)$/.exec(location.hash),contextData=contextHash?JSON.parse(decodeURIComponent(contextHash[1])):null;
     if(contextData&&/^ftv-netflix-[a-f0-9]{16}$|^household$/.test(contextData.profileId)&&contextData.titles&&typeof contextData.titles==='object'){
       episodeContext=contextData;sessionStorage.setItem('ftv.episodeContext.v1',JSON.stringify(contextData));
     }else if(location.hostname==='flixtor.to'){episodeContext=JSON.parse(sessionStorage.getItem('ftv.episodeContext.v1')||'null')||episodeContext;}
   }catch(_){}
-  function titleNavigation(item,mode){var url=watchURL(item.url).split('#')[0],ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),titles={};
+  function titleNavigation(item,mode){var url=watchURL(item.url).split('#')[0],ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),titles={},context;
     if(episodeContext.titles&&episodeContext.titles[ident])titles[ident]=episodeContext.titles[ident];
-    return url+'#ftv-'+mode+'='+encodeURIComponent(JSON.stringify({profileId:selectedProfile||episodeContext.profileId||'household',titles:titles}));
+    context={profileId:selectedProfile||episodeContext.profileId||'household',titles:titles};
+    // A known rating travels with the title (keyed by id, so it never applies to another title).
+    if(item.feedback&&RATING_VALUES.indexOf(item.feedback.rating)!==-1){context.ratings={};context.ratings[ident]=item.feedback.rating;}
+    return url+'#ftv-'+mode+'='+encodeURIComponent(JSON.stringify(context));
   }
   function episodeFacts(){var id=(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1];return episodeContext.titles&&episodeContext.titles['flixtor:tv:'+id]||null;}
   var explicitOriginal=!localShell&&/^#ftv-(original|search)$/.test(location.hash);
@@ -415,9 +420,30 @@
       var eps=preview&&item.episodes?item.episodes:(!preview&&pid(item)===(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1]?readEpisodes():[]);
       if(eps.length){var manualNext=episodeFacts()&&FTV_HISTORY.nextUnwatched(eps,episodeFacts());if(manualNext)nextAction=a.appendChild(button('▶ Next: S'+manualNext.season+' · E'+manualNext.number,function(){rememberView(item);startPlayback();manualNext.native.click();},'primary'));if(!manualNext&&item.resume&&item.resume.complete){var next=FTV_HISTORY.next(eps,item.resume);if(next)a.appendChild(button('▶ Next: S'+next.season+' · E'+next.number,function(){rememberView(item);startPlayback();next.native.click();},'primary'));}seasonChooser(wrap,item,eps);}else{var e=node('div','notice',preview?'Episode chooser is demonstrated on MobLand. Other series open their original FlixTor page.':'The episode chooser appears after opening the series page.');wrap.appendChild(e);}
     }
+    ratingRow(wrap,item);
     if(preview)wrap.appendChild(node('p','hint','Preview only · live mode uses FlixTor Favorites and its original player.'));focus(nextAction||a.firstChild);
   }
-  function recommendationHelp(){var wrap=startDialog('How your recommendations work');append(wrap,node('h1','','How picks work'),node('p','recommendation-reason',recommendationInfo&&recommendationInfo.model||'Personalized recommendations from Gorse'));['Genres, release era and media type help find similar titles.','Shared directors and writers add another connection where metadata is available.','Explicit likes and your Good recommendation votes have more weight than ordinary imported viewing.','Not for me hides that title and lowers similar picks. Already watched hides it without treating it as a like.','Recent interests receive more weight. The list mixes similar and more varied choices.','Other-user recommendations need separate profiles and overlapping ratings. Story-level AI matching needs additional plot data and a local model or API.'].forEach(function(text){var p=node('p','notice',text);p.tabIndex=0;p.setAttribute('data-focus-copy','1');wrap.appendChild(p);});focus(wrap.querySelector('button'));}
+  // Seen it? Rate it. Saves to the TV service's /feedback (details pages may send ratings only).
+  function ratingRow(wrap,item){
+    if(!preview&&localShell)return;
+    var ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),known=episodeContext.ratings&&episodeContext.ratings[ident],current=RATING_VALUES.indexOf(known)!==-1?known:null,saving=false;
+    var box=node('div','rating-row');box.appendChild(node('h2','','Seen it? Rate it'));var r=row(box,'actions'),status=node('p','hint');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+    var buttons=RATING_OPTIONS.map(function(o){var b=button(o[1],function(){choose(current===o[0]?null:o[0]);},'solid');b.dataset.rating=o[0];r.appendChild(b);return b;});
+    function draw(){buttons.forEach(function(b){var on=b.dataset.rating===current;b.classList.toggle('chosen',on);b.setAttribute('aria-pressed',String(on));});}
+    function choose(value){
+      if(saving)return;
+      if(preview){current=value;draw();status.textContent='Preview only \u00b7 live mode saves ratings for recommendations.';return;}
+      saving=true;status.textContent='Saving\u2026';
+      var req=new XMLHttpRequest();req.open('POST',(window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/feedback');req.setRequestHeader('Content-Type','application/json');req.timeout=15000;
+      function done(ok,code){saving=false;if(ok){current=value;draw();status.textContent=value?'Saved: '+RATING_OPTIONS.filter(function(o){return o[0]===value;})[0][1]+' \u00b7 recommendations will adjust.':'Rating cleared.';return;}
+        status.textContent=code===0||code===403?'Could not save here. Re-add the FlixTor TV module in TizenBrew to rate from this screen.':'Could not save your rating. Check the recommendation server, then try again.';}
+      req.onload=function(){var v={};try{v=JSON.parse(req.responseText)||{};}catch(_){}done(req.status===200&&v.saved===true,req.status);};
+      req.onerror=req.ontimeout=function(){done(false,0);};
+      req.send(JSON.stringify({profileId:episodeContext.profileId||'household',itemId:ident,rating:value}));
+    }
+    draw();box.appendChild(status);wrap.appendChild(box);
+  }
+  function recommendationHelp(){var wrap=startDialog('How your recommendations work');append(wrap,node('h1','','How picks work'),node('p','recommendation-reason',recommendationInfo&&recommendationInfo.model||'Personalized recommendations from Gorse'));['Genres, release era and media type help find similar titles.','Shared directors and writers add another connection where metadata is available.','Explicit likes and your Good recommendation votes have more weight than ordinary imported viewing.','Ratings after watching count too: Loved it counts most, Liked it adds a little, and Didn\u2019t like it or Hated it push similar titles down (Hated it twice as hard).','Not for me hides that title and lowers similar picks. Already watched hides it without treating it as a like.','Recent interests receive more weight. The list mixes similar and more varied choices.','Other-user recommendations need separate profiles and overlapping ratings. Story-level AI matching needs additional plot data and a local model or API.'].forEach(function(text){var p=node('p','notice',text);p.tabIndex=0;p.setAttribute('data-focus-copy','1');wrap.appendChild(p);});focus(wrap.querySelector('button'));}
   function showRecommendation(item,from){
     var wrap=startDialog('Your recommendation: '+item.title,from),copy=node('div','recommendation-feedback');
     append(copy,node('p','eyebrow','PICKED FOR YOUR HOUSEHOLD'),node('h1','',item.title),meta(item),node('p','recommendation-reason',item.reason));
@@ -425,10 +451,11 @@
     copy.appendChild(node('h2','','Is this a good recommendation?'));
     var votes=row(copy,'actions'),watch=row(copy,'actions'),status=node('p','hint');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     var buttons=[],saving=false,revision=0,confirmed=Object.assign({},item.feedback||{});
-    function action(label,field,value,parent){var b=button(label,function(){var current=item.feedback||{};save(field,current[field]===value?(field==='watched'?null:'clear'):value);},'solid');b.dataset.feedbackField=field;b.dataset.feedbackValue=String(value);parent.appendChild(b);buttons.push(b);return b;}
+    function action(label,field,value,parent){var b=button(label,function(){var current=item.feedback||{};save(field,current[field]===value?(field==='preference'?'clear':null):value);},'solid');b.dataset.feedbackField=field;b.dataset.feedbackValue=String(value);parent.appendChild(b);buttons.push(b);return b;}
     action('Good recommendation','preference','like',votes);action('Not for me','preference','dislike',votes);
     copy.appendChild(node('h2','','Have you watched it?'));copy.appendChild(watch);action('Already watched','watched',true,watch);action('Not watched yet','watched',false,watch);
-    copy.appendChild(node('p','hint','Select a highlighted choice again to clear it. These choices tune recommendations. FlixTor lists and playback progress stay with FlixTor.'));
+    copy.appendChild(node('h2','','Seen it? Rate it'));var rate=row(copy,'actions');RATING_OPTIONS.forEach(function(o){action(o[1],'rating',o[0],rate);});
+    copy.appendChild(node('p','hint','Select a highlighted choice again to clear it. A rating also marks the title as watched. These choices tune recommendations. FlixTor lists and playback progress stay with FlixTor.'));
     append(copy,status);wrap.appendChild(copy);
     function draw(){var state=item.feedback||{};buttons.forEach(function(b){var chosen=String(state[b.dataset.feedbackField])===b.dataset.feedbackValue;b.classList.toggle('chosen',chosen);b.setAttribute('aria-pressed',String(chosen));});}
     // Desired feedback stays on the dialog item; one request at a time persists snapshots.
@@ -440,9 +467,9 @@
     }
     function persist(){
       if(saving)return;saving=true;var sentRevision=revision;
-      var state={preference:item.feedback.preference||'clear',watched:item.feedback.watched==null?null:item.feedback.watched};
+      var state={preference:item.feedback.preference||'clear',watched:item.feedback.watched==null?null:item.feedback.watched,rating:RATING_VALUES.indexOf(item.feedback.rating)!==-1?item.feedback.rating:null};
       status.textContent='Saving your feedback…';
-      var payload={itemId:'flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),profileId:item.profileId||selectedProfile||'household',preference:state.preference,watched:state.watched};
+      var payload={itemId:'flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),profileId:item.profileId||selectedProfile||'household',preference:state.preference,watched:state.watched,rating:state.rating};
       var req=new XMLHttpRequest();req.open('POST',bridgeOrigin+'/feedback');req.setRequestHeader('Content-Type','application/json');req.timeout=15000;
       var finished=false;
       function fail(){if(finished)return;finished=true;saving=false;item.feedback=Object.assign({},confirmed);draw();status.textContent='Could not save your latest choices. Keep the Mac awake and try again.';}

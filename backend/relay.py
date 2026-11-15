@@ -12,6 +12,12 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 from personalize import catalogue
+# Explicit feedback weights for re-ranking (one table; readers below never hard-code their own).
+# Positive: added as taste seeds. Negative: penalize similar candidates.
+SEED_WEIGHTS={'rating:love':6,'preference:like':4,'rating:like':3}
+NEGATIVE_WEIGHTS={'rating:hate':2,'preference:dislike':1,'rating:dislike':1}
+def feedback_weight(state,table):
+    return max([table.get('rating:'+str(state.get('rating')),0),table.get('preference:'+str(state.get('preference')),0)])
 from devices import DeviceRegistry,DeviceError,RegistryUnreadable
 
 def recommendation_payload(data_dir,feedback=None):
@@ -31,7 +37,8 @@ def recommendation_payload(data_dir,feedback=None):
         except (ValueError,KeyError):pass
         packs.append((item,weight,features.get(item['id'],{})))
     for ident,state in states.items():
-        if state['preference']=='like' and ident in items:packs.append((items[ident],4,features.get(ident,{})))
+        seed=feedback_weight(state,SEED_WEIGHTS)
+        if seed and ident in items:packs.append((items[ident],seed,features.get(ident,{})))
         if (state['watched'] is False or state['preference']=='like' and state['watched'] is not True) and ident in items and ident not in ids:ids.append(ident)
     def similarity(item,feature,seed,sf):
         x=set(item['genres']);y=set(seed['genres']);genre=len(x&y)/max(1,len(x|y))
@@ -39,7 +46,7 @@ def recommendation_payload(data_dir,feedback=None):
         content=sum(a*b for a,b in zip(va,vb));a=set(feature.get('creators',[]));b=set(sf.get('creators',[]))
         creator=len(a&b)/max(1,len(a|b))
         return .45*genre+.35*content+.2*creator
-    negatives=[items[ident] for ident,state in states.items() if state['preference']=='dislike' and ident in items]
+    negatives=[(items[ident],feedback_weight(state,NEGATIVE_WEIGHTS)) for ident,state in states.items() if feedback_weight(state,NEGATIVE_WEIGHTS) and ident in items]
     candidates=[]
     for rank,ident in enumerate(dict.fromkeys(ids)):
         if ident not in items:continue
@@ -50,7 +57,7 @@ def recommendation_payload(data_dir,feedback=None):
         scores=[(weight*similarity(item,feat,seed,sf),seed) for seed,weight,sf in packs]
         scores.sort(key=lambda pair:pair[0],reverse=True)
         score=sum(value for value,seed in scores[:8])/8 + .2/(1+rank/20)
-        score-=.22*max((similarity(item,feat,negative,features.get(negative['id'],{})) for negative in negatives),default=0)
+        score-=.22*max((weight*similarity(item,feat,negative,features.get(negative['id'],{})) for negative,weight in negatives),default=0)
         if scores:
             seed=scores[0][1];item['reason']='Shares genres, era or creators with '+seed['title']
         else:item['reason']='Explore something from the catalogue'

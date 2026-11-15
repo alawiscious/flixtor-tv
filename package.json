@@ -21,7 +21,7 @@
   "scripts": {
     "build": "node build.cjs",
     "check": "node check.cjs && node test-profile-dialog.cjs && node test-catalogue-navigation.cjs && node test-discovery-navigation.cjs && node test-recommendation-cache.cjs && node test-recommendation-feedback.cjs && node test-player-navigation.cjs && node test-watch-history.cjs && node test-playback-power.cjs && node test-playback-exit.cjs && node test-updater.cjs && node test-updater-http.cjs && node test-remote-service.cjs",
-    "check:browser": "node test-playback-exit-browser.cjs && node test-hero-layout-browser.cjs && node test-pairing-browser.cjs && node test-details-navigation-browser.cjs"
+    "check:browser": "node test-playback-exit-browser.cjs && node test-hero-layout-browser.cjs && node test-pairing-browser.cjs && node test-details-navigation-browser.cjs && node test-ratings-browser.cjs"
   },
   "serviceFile": "service.js"
 }

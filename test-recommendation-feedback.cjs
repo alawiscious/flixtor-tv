@@ -8,6 +8,7 @@ function fixture(){
  const context={main:{querySelector(){return null;}},preserveRender(){context.renders=(context.renders||0)+1;},document:{activeElement:null},lastRecommendationBundle:null,profilePacks:[],returnFocus:null,dialog:{},recommendationsDirty:false,connectRecommendations:true,selectedProfile:'alec',bridgeOrigin:'http://fixture',recommendations:[{...item,title:'First',url:'/tv/41'},item,{...item,title:'Last',url:'/tv/43'}],
   startDialog(){return el();},node:el,row(parent,cls){return parent.appendChild(el('div',cls));},append(p,...cs){cs.forEach(c=>p.appendChild(c));},
   button(label,fn){const b=el('button','',label);b.click=()=>{context.document.activeElement=b;fn();};controls.push(b);return b;},focus(b){context.document.activeElement=b;},
+  RATING_OPTIONS:[['love','Loved it'],['like','Liked it'],['dislike','Didn\u2019t like it'],['hate','Hated it']],RATING_VALUES:['love','like','dislike','hate'],
   meta(){return el();},tv(){return true;},pid(){return '42';},itemKey(i){return i.url;},
   XMLHttpRequest:function(){requests.push(this);this.open=()=>{};this.setRequestHeader=()=>{};this.send=p=>{this.payload=JSON.parse(p);};}
  };
@@ -46,4 +47,16 @@ function fixture(){
  assert.equal(f.context.recommendations.length,2,'Closing during save still removes the watched title');
  assert.equal(f.context.renders,1,'A completed save refreshes the visible row if the dialog already closed');
 }
-console.log('PASS: feedback focus, stable row order, rapid combined choices, stale response protection, watched removal and failed-save retry.');
+{
+ // Seen + rating: the payload carries the rating; the server's answer (rating implies watched) is the truth.
+ const f=fixture();f.click('Loved it');
+ assert.equal(f.requests[0].payload.rating,'love');assert.equal(f.requests[0].payload.preference,'clear');
+ f.respond(0,{preference:'clear',watched:true,rating:'love'});
+ assert.equal(f.item.feedback.rating,'love');assert.equal(f.item.feedback.watched,true);
+ assert.deepEqual(Array.from(f.context.recommendations,i=>i.title),['First','Last'],'A rated (seen) title leaves the picks');
+}
+{
+ const f=fixture();f.item.feedback={rating:'hate',watched:true};f.click('Hated it');
+ assert.strictEqual(f.requests[0].payload.rating,null,'Selecting the chosen rating again clears it (null, not "clear")');
+}
+console.log('PASS: feedback focus, stable row order, rapid combined choices, stale response protection, watched removal, failed-save retry and seen + rating (love/like/dislike/hate) payloads.');
