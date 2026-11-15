@@ -12,6 +12,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 from personalize import catalogue
+from devices import DeviceRegistry,DeviceError,RegistryUnreadable
 
 def recommendation_payload(data_dir,feedback=None):
     root=Path(data_dir);feedback=feedback or FeedbackStore(root);public_root=feedback.catalogue_root
@@ -102,12 +103,18 @@ class CatalogueSync:
                 if self.pending:
                     self.scheduled=True;timer=threading.Timer(3,self.run);timer.daemon=True;timer.start()
 
-def handler(data_dir,allowed,sync=None,automatic_plots=False):
-    profiles=RecommendationProfiles(data_dir)
-    plots=PlotStore(data_dir)
-    indexer=ShadowIndexer(data_dir,sync.db if sync else None)
-    collector=AutomaticPlotCollector(plots,indexer) if automatic_plots else None
-    if collector:collector.start()
+class Services:
+    """Shared state for both listeners: one profile registry, one plot store, one catalogue sync."""
+    def __init__(self,data_dir,sync=None,automatic_plots=False):
+        self.profiles=RecommendationProfiles(data_dir);self.plots=PlotStore(data_dir);self.sync=sync
+        self.indexer=ShadowIndexer(data_dir,sync.db if sync else None)
+        self.collector=AutomaticPlotCollector(self.plots,self.indexer) if automatic_plots else None
+        if self.collector:self.collector.start()
+
+def handler(data_dir,allowed,sync=None,automatic_plots=False,services=None):
+    """LAN listener: the home TV and this Mac, authorized by source IP (unchanged since 0.3.x)."""
+    services=services or Services(data_dir,sync,automatic_plots)
+    profiles,plots,indexer,collector,sync=services.profiles,services.plots,services.indexer,services.collector,services.sync
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             if self.client_address[0] not in allowed:self.send_error(403);return
@@ -138,13 +145,88 @@ def handler(data_dir,allowed,sync=None,automatic_plots=False):
     Handler.plot_collector=collector
     return Handler
 
+class RateLimiter:
+    def __init__(self,limit,window=60,clock=time.monotonic):
+        self.limit,self.window,self.clock=limit,window,clock;self.hits={};self.lock=threading.Lock()
+    def allow(self,key):
+        now=self.clock()
+        with self.lock:
+            recent=[t for t in self.hits.get(key,[]) if now-t<self.window]
+            if len(recent)>=self.limit:self.hits[key]=recent;return False
+            recent.append(now);self.hits[key]=recent;return True
+
+def public_handler(services,registry,request_limit=120,pair_limit=10,clock=time.monotonic):
+    """Public listener (behind Tailscale Funnel). Every request is authorized by a paired device token;
+    the source address is never consulted, because Funnel traffic arrives from 127.0.0.1. A device sees
+    and changes only its own profiles. /plots and /health details are not offered here."""
+    requests_per_device=RateLimiter(request_limit,60,clock);pair_attempts=RateLimiter(pair_limit,60,clock)
+    def names(ids):return [{'id':e['id'],'name':e['name']} for e in services.profiles.entries() if e['id'] in set(ids)]
+    class Public(BaseHTTPRequestHandler):
+        server_version='FlixTorRelay';sys_version=''
+        def reply(self,code,payload):
+            body=json.dumps(payload).encode();self.send_response(code)
+            self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store')
+            self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+        def device(self):
+            try:status,device=registry.authenticate(self.headers.get('Authorization'))
+            except DeviceError:self.reply(503,{'error':'Recommendation server is misconfigured.'});return None
+            if status=='revoked':self.reply(403,{'error':'Connection removed. Pair this TV again.','code':'revoked'});return None
+            if status!='ok':self.reply(401,{'error':'Pair this TV to use recommendations.','code':'unpaired'});return None
+            if not requests_per_device.allow(device['id']):self.reply(429,{'error':'Too many requests. Try again in a minute.'});return None
+            return device
+        def payload(self):
+            if self.headers.get_content_type()!='application/json':raise ValueError('JSON required')
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=100000:raise ValueError('Invalid size')
+            return json.loads(self.rfile.read(length))
+        def do_GET(self):
+            if self.headers.get('Origin'):self.reply(403,{'error':'Browser requests are not accepted.'});return
+            if self.path=='/health':self.reply(200,{'ready':True});return
+            if self.path not in ('/recommendations','/device'):self.reply(404,{'error':'Not found'});return
+            device=self.device()
+            if not device:return
+            if self.path=='/device':self.reply(200,{'label':device['label'],'profiles':names(device['profiles'])});return
+            try:self.reply(200,services.profiles.bundle(recommendation_payload,scope=device['profiles']))
+            except PermissionError as error:self.reply(403,{'error':str(error),'code':'no-profiles'})
+            except (OSError,ValueError,KeyError,urllib.error.URLError):self.reply(503,{'error':'Recommendation service is unavailable.'})
+        def do_POST(self):
+            if self.headers.get('Origin'):self.reply(403,{'error':'Browser requests are not accepted.'});return
+            if self.path=='/pair':
+                if not pair_attempts.allow('pair'):self.reply(429,{'error':'Too many pairing attempts. Wait a minute.'});return
+                try:code=self.payload().get('code')
+                except (ValueError,AttributeError):self.reply(400,{'error':'Send the pairing code.'});return
+                try:token,device=registry.pair(code)
+                except RegistryUnreadable:self.reply(503,{'error':'Recommendation server is misconfigured.'});return
+                except DeviceError as error:self.reply(401,{'error':str(error),'code':'bad-code'});return
+                self.reply(200,{'token':token,'label':device['label'],'profiles':names(device['profiles'])});return
+            if self.path not in ('/feedback','/catalogue') or (self.path=='/catalogue' and services.sync is None):self.reply(404,{'error':'Not found'});return
+            device=self.device()
+            if not device:return
+            try:
+                body=self.payload()
+                if self.path=='/catalogue':self.reply(202,{'accepted':services.sync.add(body)});return
+                self.reply(200,{'saved':True,'state':services.profiles.save_scoped(body,device['profiles'])})
+            except PermissionError as error:self.reply(403,{'error':str(error),'code':'out-of-scope'})
+            except (ValueError,OSError,TypeError):self.reply(400,{'error':'Invalid request.'})
+        def log_message(self,*args):pass # no tokens, codes or viewing data in logs
+    return Public
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--db');p.add_argument('--tv-ip',required=True);p.add_argument('--bind',default='0.0.0.0');p.add_argument('--port',type=int,default=8772);a=p.parse_args()
-    routes=handler(a.data,{'127.0.0.1',a.tv_ip},CatalogueSync(a.data,a.db) if a.db else None,automatic_plots=True)
-    server=ThreadingHTTPServer((a.bind,a.port),routes)
+    p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--db');p.add_argument('--tv-ip',required=True);p.add_argument('--bind',default='0.0.0.0');p.add_argument('--port',type=int,default=8772)
+    p.add_argument('--public-port',type=int,help='Token-only listener for Tailscale Funnel (loopback only)');p.add_argument('--devices',help='Private paired-device registry (required with --public-port)');a=p.parse_args()
+    if a.public_port and not a.devices:p.error('--public-port needs --devices')
+    services=Services(a.data,CatalogueSync(a.data,a.db) if a.db else None,automatic_plots=True)
+    routes=handler(a.data,{'127.0.0.1',a.tv_ip},services=services)
+    server=ThreadingHTTPServer((a.bind,a.port),routes);public=None
+    if a.public_port:
+        # Loopback only: Funnel is the single public path, and it carries no trusted source address.
+        public=ThreadingHTTPServer(('127.0.0.1',a.public_port),public_handler(services,DeviceRegistry(a.devices)))
+        threading.Thread(target=public.serve_forever,daemon=True).start()
+        print('Paired-device recommendation listener on 127.0.0.1:'+str(a.public_port),flush=True)
     try:
         print('TV recommendation relay on port '+str(a.port),flush=True);server.serve_forever()
     finally:
-        if routes.plot_collector:routes.plot_collector.stop()
+        if services.collector:services.collector.stop()
+        if public:public.shutdown();public.server_close()
         server.server_close()
 if __name__=='__main__':main()

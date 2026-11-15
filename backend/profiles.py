@@ -55,9 +55,21 @@ class RecommendationProfiles:
         if not isinstance(ident,str) or not ident:raise ValueError('Invalid profile')
         if payload.get('action')=='episode_progress':return self.progress_store(ident).save(payload)
         return self.store(ident).save(payload)
-    def bundle(self,recommend):
+    def bundle(self,recommend,scope=None):
+        """scope=None: the full LAN bundle (household top level + every profile).
+        scope=[ids]: a remote device's bundle. Only those profiles are computed or returned; the top
+        level is the first allowed profile, never the household unless it is in scope."""
         entries=self.entries()
+        if scope is not None:
+            entries=[e for e in entries if e['id'] in set(scope)]
+            if not entries:raise PermissionError('No recommendation profiles are available to this device')
         snapshots=self.snapshots.bundle(entries,self.store,recommend)
         packs=[dict(self.with_progress(pack,entry['id']),id=entry['id'],name=entry['name']) for entry,pack in zip(entries,snapshots)]
+        if scope is not None:return dict(packs[0],profiles=packs)
         result=self.with_progress(snapshots[0],'household')
         return dict(result,profiles=packs) if len(entries)>1 else result
+    def save_scoped(self,payload,scope):
+        """Remote feedback: the target profile (default household) must be in the device's scope."""
+        ident=payload.get('profileId','household') if isinstance(payload,dict) else None
+        if ident not in set(scope):raise PermissionError('This device cannot change that profile')
+        return self.save(payload)

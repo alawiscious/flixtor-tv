@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "bridge": 1,
-  "version": "0.3.14",
-  "path": "updates/releases/0.3.14.json",
-  "sha256": "57e40a2fb02efa6933f4d9a88fc6af33b8709e839e339f1da2bae32f318c96ff",
-  "signature": "b13KFGIrHxOSpprhAtXHWGzs6aiDfqwftT85jn2oXxwJtRTeXqYc6h7p+J4dDaO3WX6zh+Uy9z4GcJdwd1+yVkXeFzovH8tX1xGtkFUxkKryqbsLw++FTPyXWLgKOMixP1wYOEq+7S1B48sVY8GOVhO40V8l+JMtXMY2ld4pDirwczedLjXhM152O2Q81Cyenq1Nj0bGDGVedv8cBFPh4ybK/nmsgeXi6QU33LE1G0NGZfhz47IQIHhrD48rT/vTxNylF1IIxn609cHFMKbuGilsFLFbq6RaJY6G2qcj/qrTzqjT5f7U0sRc8Jph6wpyOHrkR4AcklkIy57NNYckcA=="
+  "version": "0.4.0",
+  "path": "updates/releases/0.4.0.json",
+  "sha256": "7f3d03ddce4e3c6d9007e37f9b8407c3f45e4fb09e25bc13f0e4d348d4218c6a",
+  "signature": "epfhWCDxTpsv8XMweb/eQYbj1yqcZ78/5nO0TV7b8LxPkVsO8GnxAO41hLjbqGVSE4WX06ZGx3i9Bd/uCgOCmlMYVZUS4ifd/t1idrY3/kCr/V1K3kIl6a1NDFVn5ytJDdtMsfplz6DutVqOzgUNANWWN+7f+rdHeUdf5NNMWCYfVDiXs14Lnpf5zjzFE/JARtGmXqzEVqIyozSPNv6D2e8tpZsmgT1VVInj2pwQ/OhPdGcdlGpNeKKFkf2j+4A0alafMC00bR+ofmVzfqySQXqwkkm6L3xuDrta9QpIWTSah9dObIOOcGV24lkB86WdXXUnPEVoUVAr1Ir4u6wDCQ=="
 }

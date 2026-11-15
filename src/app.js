@@ -57,6 +57,8 @@
   var plotContinueTimer=null;
   var searchKey=null;
   var profilePacks=[],selectedProfile='',profileRequest=null,profilePrompted=false;
+  // Last /connection answer from the TV service (0.4.0+). {supported:false} for older services. Read via connectionView().
+  var remoteConnection=null,PAIR_ALPHABET='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   try{selectedProfile=sessionStorage.getItem('ftv.recommendationProfile.v1')||'';}catch(_){}
   var recommendationOffline=false,lastRecommendationBundle=null,recommendationRetryTimer=null;
   var recommendations = [], recommendationState = 'idle', recommendationInfo = null, rowPositions = {},recommendationsDirty=false;
@@ -177,7 +179,7 @@
       heading('Watching','Your FlixTor history · open a title to resume the last episode or choose another.');if(!preview&&(all.length||filterState.from||filterState.to||filterState.rating)){filters();var watching=filtered(all);if(watching.length)grid(watching);else empty('Nothing matches these filters','Try a wider release-year range or a lower minimum rating.');}else empty('Your next episode belongs here',preview?'Your real FlixTor history will appear in live mode. No viewing progress has been invented.':'No viewing history is available on this device. Check your existing FlixTor Sync Code.',{label:'Sync settings',fn:syncSettings});
     }else if(tab==='For You'){
       heading('For You',recommendationInfo?recommendationInfo.scope+' · '+recommendationInfo.seedCount+' matched interests':'Recommendations shaped by your imported history.');
-      if(recommendationOffline||recommendationInfo&&recommendationInfo.stale)main.appendChild(node('p','notice',(recommendationOffline?'Saved picks · Mac unavailable.':'Saved picks · refreshing recommendations.')+(recommendationInfo&&recommendationInfo.generatedAt?' Generated '+new Date(recommendationInfo.generatedAt).toLocaleDateString()+'.':'')+' Feedback needs the recommendation server.'));
+      if(recommendationOffline||recommendationInfo&&recommendationInfo.stale)main.appendChild(node('p','notice',(recommendationOffline?connectionView().offline:'Saved picks · refreshing recommendations.')+(recommendationInfo&&recommendationInfo.generatedAt?' Generated '+new Date(recommendationInfo.generatedAt).toLocaleDateString()+'.':'')+' Feedback needs the recommendation server.'));
       var profileTools=row(main,'actions');profileTools.appendChild(button('Recommendations for: '+(recommendationInfo&&recommendationInfo.profileName||'Choose profile'),profileChooser,'solid'));
       if(recommendations.length){
         rail('Your next watch',recommendations.slice(0,12),'History + your feedback');
@@ -185,7 +187,7 @@
         var tools=row(main,'actions');tools.appendChild(button('Refresh recommendations',loadRecommendations,'solid'));tools.appendChild(button('How picks work',recommendationHelp,'solid'));
       }else if(recommendationState==='loading'||recommendationInfo&&recommendationInfo.cacheStatus==='updating')empty('Finding your next watch…','Connecting to your recommendation server. This takes a few seconds.');
       else if(!connectRecommendations)empty('Your taste belongs here','The live TV app connects to Gorse on your Mac.',{label:'Browse titles',fn:function(){gotoRoute('Home');}});
-      else empty('Recommendations are unavailable','Keep the Mac and Gorse running, then retry. Your lists and browsing still work.',{label:'Try again',fn:loadRecommendations});
+      else{var cv=connectionView();empty('Recommendations are unavailable',cv.failure,{label:cv.retry,fn:cv.retry==='Pair again'&&cv.pairable?connectionDialog:loadRecommendations});}
     }else if(tab==='Search'){renderSearch();}
     if(!all.length&&tab==='Home')empty('The catalogue is still loading','Open the original site to sign in, then return to TV view.',{label:'Original site',fn:showOriginal});
     footer.lastChild.textContent=tab==='For You'&&recommendations.length?recommendations.length+' suggestions · Gorse':preview?'Sample catalogue · preview only':all.length+' titles · FlixTor storage';
@@ -251,11 +253,74 @@
     recommendations=(chosen.items||[]).slice(0,24).filter(function(i){return typeof i.title==='string'&&typeof i.url==='string'&&watchURL(i.url)&&typeof i.image==='string'&&/^https:\/\/img\.xcdn\.to\//.test(i.image);}).map(function(i){return {title:i.title,year:String(i.year||''),meta:String(i.meta||''),image:i.image,url:watchURL(i.url),reason:String(i.reason||'From your imported history'),rating:String(i.rating||''),feedback:i.feedback||{},profileId:chosen.id||'household'};});
     recommendationInfo={seedCount:Number(chosen.seedCount)||0,model:String(chosen.model||'Genre similarity'),scope:String(chosen.scope||'Imported history'),profileName:String(chosen.name||'Household · Amazon unassigned'),stale:!!chosen.stale,cacheStatus:chosen.cacheStatus||'fresh',generatedAt:chosen.generatedAt||null};
   }
+  // The one place that turns the service's connection state into wording and actions.
+  function connectionView(){
+    var c=remoteConnection||{supported:false},pairable=!!(c.supported&&localShell&&window.FTV_UPDATE_TOKEN);
+    if(c.supported&&c.paired){
+      if(c.error==='remote-403')return {kind:'removed',pairable:pairable,status:'Connection removed on the server.',failure:'This TV\u2019s recommendation connection was removed. Ask for a new pairing code.',offline:'Saved picks \u00b7 connection removed.',hint:'Pair this TV again to load profiles.',retry:'Pair again'};
+      if(c.error==='remote-401')return {kind:'invalid',pairable:pairable,status:'This connection is no longer valid.',failure:'This TV needs to be paired again. Ask for a new pairing code.',offline:'Saved picks \u00b7 pair this TV again.',hint:'Pair this TV again to load profiles.',retry:'Pair again'};
+      return {kind:'remote',pairable:pairable,status:'Connected as '+c.label+'.',failure:'Cannot reach the recommendation server. Check this TV\u2019s internet connection, then retry. Your lists and browsing still work.',offline:'Saved picks \u00b7 recommendation server unavailable.',hint:'Profiles load from your recommendation server.',retry:'Try again'};
+    }
+    return {kind:c.supported?'lan':'unsupported',pairable:pairable,status:c.supported?'Using the recommendation server on your home network.':'',failure:'Keep the Mac and Gorse running, then retry. Your lists and browsing still work.'+(pairable?' Not on the home network? Connect this TV with a pairing code.':''),offline:'Saved picks \u00b7 Mac unavailable.',hint:'Profiles load from your recommendation server. Keep the Mac running.'+(pairable?' Away from home? Use Connect to recommendations.':''),retry:'Try again'};
+  }
+  function refreshConnection(done){
+    if(preview||!localShell){if(done)done();return;}
+    var req=new XMLHttpRequest();req.open('GET',bridgeOrigin+'/connection');req.timeout=5000;
+    function settle(v){remoteConnection=v&&typeof v.paired==='boolean'?{supported:true,paired:v.paired,label:String(v.label||'').slice(0,40),profiles:(Array.isArray(v.profiles)?v.profiles:[]).filter(function(p){return p&&typeof p.id==='string'&&typeof p.name==='string';}),error:String(v.error||'')}:{supported:false};if(done)done();}
+    req.onload=function(){var v=null;try{if(req.status===200)v=JSON.parse(req.responseText);}catch(_){v=null;}settle(v);};
+    req.onerror=req.ontimeout=function(){settle(null);};req.send();
+  }
+  function connectionRequest(route,value,done){
+    var req=new XMLHttpRequest();req.open('POST',bridgeOrigin+route);req.setRequestHeader('Content-Type','application/json');req.setRequestHeader('X-FTV-Update-Token',window.FTV_UPDATE_TOKEN||'');req.timeout=20000;
+    req.onload=function(){var v={};try{v=JSON.parse(req.responseText)||{};}catch(_){}done(req.status,v);};
+    req.onerror=req.ontimeout=function(){done(0,{});};req.send(JSON.stringify(value));
+  }
+  // Switching between home relay and paired server: drop picks from the other source before reloading.
+  function switchRecommendationSource(profileId){
+    clearTimeout(recommendationRetryTimer);profilePacks=[];recommendations=[];recommendationInfo=null;lastRecommendationBundle=null;recommendationOffline=false;recommendationState='idle';
+    selectedProfile=profileId||'';try{if(profileId)sessionStorage.setItem('ftv.recommendationProfile.v1',profileId);else sessionStorage.removeItem('ftv.recommendationProfile.v1');}catch(_){}
+    var old=dialog;dialog=null;detailItem=null;if(old)old.remove();tab='For You';render();loadRecommendations();focus(main.querySelector('button'));
+  }
+  function connectionDialog(){
+    var wrap=startDialog('Recommendation connection',document.activeElement);wrap.appendChild(node('h1','','Connect to recommendations'));
+    var status=node('p','synopsis','Checking this TV\u2026');status.setAttribute('role','status');wrap.appendChild(status);var body=node('div','pair-body');wrap.appendChild(body);
+    function draw(){
+      body.textContent='';var c=remoteConnection||{supported:false},view=connectionView();
+      if(!view.pairable){status.textContent=c.supported?'Open this from the FlixTor TV home screen to pair.':'Pairing needs the newer FlixTor TV service. Re-add the module in TizenBrew, then try again.';focus(wrap.querySelector('button'));return;}
+      if(!c.paired){codeEntry();return;}
+      status.textContent=view.status+' Profile: '+(c.profiles.map(function(p){return p.name;}).join(', ')||'none')+'.';
+      var tools=row(body,'actions');
+      tools.appendChild(button('Pair with a new code',codeEntry,'solid primary'));
+      tools.appendChild(button('Remove connection',function(){choice('Remove this TV\u2019s connection?',['Keep connection','Remove connection'],'Keep connection',function(v){if(v!=='Remove connection')return;connectionRequest('/connection/forget',{},function(code){if(code!==200){toast('Could not remove the connection. Reopen FlixTor and try again.');return;}refreshConnection(function(){toast('This TV uses the home network again.');switchRecommendationSource('');});});});},'solid'));
+      focus(tools.querySelector('button'));
+    }
+    function codeEntry(){
+      body.textContent='';var code='';status.textContent='Enter the 8-character pairing code. A code works once and expires after 15 minutes.';
+      var display=node('p','pair-code');display.setAttribute('aria-live','polite');body.appendChild(display);
+      function show(){var padded=(code+'\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022').slice(0,8);display.textContent=padded.slice(0,4)+'-'+padded.slice(4);display.setAttribute('aria-label','Code: '+(code.split('').join(' ')||'empty'));}
+      var keys=node('div','keyboard pair-keyboard');PAIR_ALPHABET.split('').forEach(function(ch,i){if(i%8===0)row(keys,'keyboard-line');keys.lastChild.appendChild(button(ch,function(){if(code.length<8){code+=ch;show();}if(code.length===8)focus(connect);}));});
+      var tools=row(keys,'keyboard-line'),connect=button('Connect',submit,'wide solid primary');append(tools,connect,button('Delete',function(){code=code.slice(0,-1);show();},'wide'),button('Clear',function(){code='';show();},'wide'));body.appendChild(keys);
+      function submit(){
+        if(code.length!==8){status.textContent='Enter all 8 characters, then select Connect.';return;}
+        connect.disabled=true;status.textContent='Connecting\u2026';
+        connectionRequest('/pair',{code:code},function(result,v){
+          connect.disabled=false;
+          if(result===200&&v&&v.paired){remoteConnection={supported:true,paired:true,label:String(v.label||''),profiles:(v.profiles||[]).filter(function(p){return p&&typeof p.id==='string'&&typeof p.name==='string';}),error:''};toast('Connected. Loading recommendations\u2026');switchRecommendationSource(remoteConnection.profiles[0]&&remoteConnection.profiles[0].id);return;}
+          status.textContent=result===401?'That code is wrong or has expired. Ask for a new code.':result===429?'Too many attempts. Wait a minute, then try again.':result===403?'Reopen FlixTor from TizenBrew, then try again.':result===400?'Enter all 8 characters, then select Connect.':'Cannot reach the recommendation server. Check this TV\u2019s internet connection, then try again.';
+          code='';show();focus(keys.querySelector('button'));
+        });
+      }
+      show();focus(keys.querySelector('button'));
+    }
+    refreshConnection(function(){if(wrap.isConnected!==false&&dialog&&dialog.contains(wrap))draw();});
+  }
   function profileChooser(){
     profilePrompted=true;
     if(!preview&&!localShell){location.assign(siteRoute('/home'));return;}
     var wrap=startDialog('Recommendation profiles',document.activeElement);append(wrap,node('h1','','Who are recommendations for?'),node('p','notice','Each profile has separate recommendations and feedback. FlixTor My List and playback progress still use the current FlixTor Sync Code.'));
-    if(!profilePacks.length){wrap.appendChild(node('p','muted','Profiles load from your recommendation server. Keep the Mac running.'));wrap.appendChild(button('Load profiles',function(){profileRequest=dialog;loadRecommendations();},'primary'));}
+    var view=connectionView();
+    if(!profilePacks.length){wrap.appendChild(node('p','muted',view.hint));wrap.appendChild(button('Load profiles',function(){profileRequest=dialog;loadRecommendations();},'primary'));}
+    if(view.pairable)wrap.appendChild(button(remoteConnection.paired?'Recommendation connection':'Connect to recommendations',connectionDialog,'solid'));
     profilePacks.forEach(function(p){var line=row(wrap,'choice-row');line.appendChild(button((p.id===selectedProfile?'✓ ':'')+p.name,function(){selectedProfile=p.id;try{sessionStorage.setItem('ftv.recommendationProfile.v1',p.id);}catch(_){}useRecommendationPack(p);var old=dialog;dialog=null;detailItem=null;if(old)old.remove();tab='For You';render();focus(main.querySelector('button'));},'solid'));});
     focus(wrap.querySelector('.choice-row button')||wrap.querySelector('button'));
   }
@@ -266,7 +331,8 @@
     var finished=false;
     function finish(ok){
       if(finished)return;finished=true;recommendationState=ok||recommendations.length?'ready':'error';if(!ok){profileRequest=null;recommendationOffline=!!lastRecommendationBundle;}
-      if(!dialog&&(tab==='For You'||tab==='Home'))preserveRender();
+      function rerender(){if(!dialog&&(tab==='For You'||tab==='Home'))preserveRender();}
+      if(ok)rerender();else refreshConnection(rerender);
     }
     request.onload=function(){
       try{if(request.status!==200)throw new Error();var data=JSON.parse(request.responseText);
@@ -499,6 +565,7 @@
     try{var filterFocus=JSON.parse(sessionStorage.getItem('ftv.filterFocus.v1')||'null');if(filterFocus&&filterFocus.path===sourcePath()){sessionStorage.removeItem('ftv.filterFocus.v1');focus(main.querySelector('[data-filter-key="'+filterFocus.key+'"]')||main.querySelector('.filters button'),false);}}catch(_){}
     if(connectRecommendations){sharePublicCatalogue();loadRecommendations();}
     if(localShell&&window.FTV_UPDATE_TOKEN)setTimeout(function(){updateRequest('healthy',{version:FTV_VERSION},function(){});},500);
+    if(localShell)refreshConnection(function(){if(!dialog&&tab==='For You'&&recommendationState==='error')preserveRender();});
     if(localShell){var pending=incomingPlots?{batch:incomingPlots,more:collectMore}:null;if(!pending){try{pending=JSON.parse(sessionStorage.getItem('ftv.pendingPlots')||'null');}catch(_){}}if(pending)savePlotBatch(pending.batch,pending.more);}
     var title=!preview&&/^\/watch\//.test(location.pathname)?sourceTitle():null;if(title){if(similarMode)showSimilar(title);else showDetail(title,nav.querySelector('button'));}uncoverSource();
     if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(playbackActive||changes.every(function(c){return host.contains(c.target)||inPlayer(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){if(playbackActive)return;var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
