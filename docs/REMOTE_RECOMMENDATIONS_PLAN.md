@@ -1,6 +1,6 @@
 # Plan: recommendations for a TV on another network
 
-Status: **decided (§7); phase 1 in progress**. Written 2026-11-14. It supersedes the delivery parts of
+Status: **phases 1–2 done (2026-11-14); phase 3 next**. See §8. Written 2026-11-14. It supersedes the delivery parts of
 `CLOUD_MIGRATION.md` if option A is chosen.
 
 ## 1. Goal
@@ -131,3 +131,23 @@ Phases 1–4 are reviewable PRs. Nothing is exposed publicly until phase 2, afte
    no other viewers. The profile is chosen at pairing time on the Mini; names are not recorded in
    this repository.
 3. **Alec's TV:** stays on the LAN relay, unchanged.
+
+## 8. Progress
+
+- **Phase 1** merged in #4: device registry, token-only public handler, `pair_device.py`, 12 tests.
+- **Phase 2** done 2026-11-14:
+  - The relay runs under its LaunchAgent with `--public-port 8774 --devices <private>/remote/devices.json`.
+    Before this, the live relay was a background process from `restart_recommendations.py`, not the
+    LaunchAgent. launchd now owns it; `restart_recommendations.py` refuses to start a second copy.
+  - Funnel serves HTTPS port 10000 → `127.0.0.1:8774`. Ports 443 and 8443 stay tailnet-only.
+  - Verified over the public ingress, not the tailnet:
+    - `/health` returns 200.
+    - Requests with no token or a bad token get 401. `/plots` gets 404 and browser `Origin` requests 403.
+    - A temporary device scoped to one viewer saw only that profile (no household, no other viewers). Its
+      feedback for other profiles got 403, and its token got 403 after revocation.
+  - A health check runs every 15 minutes (owner's machine, outside this repo). It checks the public path,
+    that requests without a token are refused, and the LAN relay. It sends Pushover after 2 consecutive
+    failures.
+- **Phase 3 note:** the Funnel certificate chain is Let's Encrypt ECDSA: `YE1` → `Root YE` → **ISRG Root X2**
+  (P-384). The TV service must trust ISRG Root X2 (and X1 for the RSA chain), and the 2019 TV's Node
+  runtime must support ECDSA P-384. Check that first on a real TV.

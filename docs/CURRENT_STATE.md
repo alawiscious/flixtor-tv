@@ -59,7 +59,11 @@ tests) since 0.3.14.
   updates. For You and profile feedback will fail there with "Start the recommendation relay".
 - Changing the recommendation endpoint changes the TV **service**, so it needs a module
   reinstall. A signed UI payload cannot change it (see `UPDATING.md`).
-- **OPEN:** the owner reports that recommendations were moved outside the home network. A full
+- **Since 2026-11-14 (server side only):** the relay also runs a token-only listener on `127.0.0.1:8774`,
+  published through Tailscale Funnel on HTTPS port 10000. Each paired device sees only its own profiles
+  (`backend/devices.py`, `backend/pair_device.py`). No released TV service uses it yet (phase 3 of
+  `REMOTE_RECOMMENDATIONS_PLAN.md`).
+- **OPEN (historical):** the owner reports that recommendations were moved outside the home network. A full
   search on 2026-11-14 found no such deployment: no cloud project (Vercel lists none for FlixTor),
   no tunnel or remote Docker host, no backend repo, and no running relay outside the home Mac. The
   relay has no token authentication; it allows requests by source IP only. If that work exists, it
