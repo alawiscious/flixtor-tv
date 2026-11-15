@@ -6,7 +6,7 @@ For the verified current architecture, release path, recommendation hosting and 
 
 ## Install
 
-In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.3.14`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.14.
+In TizenBrew, select the archive-box icon at the top right, then Add GitHub Module. Enter `alawiscious/flixtor-tv@v0.4.0`. Fully restart TizenBrew and launch FlixTor TV; the interface should display 0.3.14.
 
 This is a site-modification module, not a standalone WGT. TizenBrew launches https://flixtor.to/home and injects the bundled script. Sign-in uses FlixTor's native /vipsignin route with remote navigation and a masked on-screen password keyboard. Account sessions on the TV are separate from desktop Chrome.
 
@@ -41,7 +41,7 @@ Official module specification: https://github.com/reisxd/TizenBrew/blob/main/doc
 
 ## 0.3.0: recommendations and remote navigation
 
-Install the pinned GitHub module `alawiscious/flixtor-tv@v0.3.14` and fully restart
+Install the pinned GitHub module `alawiscious/flixtor-tv@v0.4.0` and fully restart
 TizenBrew after replacing an earlier version. This release includes a `serviceFile`;
 install both the manifest and generated service, not just the injected script.
 

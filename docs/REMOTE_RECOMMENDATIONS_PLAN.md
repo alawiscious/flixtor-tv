@@ -1,6 +1,6 @@
 # Plan: recommendations for a TV on another network
 
-Status: **phases 1–2 done (2026-11-14); phase 3 next**. See §8. Written 2026-11-14. It supersedes the delivery parts of
+Status: **phases 1–5 released as 0.4.0 (2026-11-14); TV validation pending**. See §8. Written 2026-11-14. It supersedes the delivery parts of
 `CLOUD_MIGRATION.md` if option A is chosen.
 
 ## 1. Goal
@@ -151,3 +151,11 @@ Phases 1–4 are reviewable PRs. Nothing is exposed publicly until phase 2, afte
 - **Phase 3 note:** the Funnel certificate chain is Let's Encrypt ECDSA: `YE1` → `Root YE` → **ISRG Root X2**
   (P-384). The TV service must trust ISRG Root X2 (and X1 for the RSA chain), and the 2019 TV's Node
   runtime must support ECDSA P-384. Check that first on a real TV.
+- **Phase 3** merged in #5: `src/remote-service.js`, `/pair`, `/connection`, `/connection/forget`;
+  pinned ISRG Root X1/X2; fixed the 0.3.x origin shadowing in the update gate. Live check: the
+  pinned roots validate the Funnel certificate and an unrelated CA is refused.
+- **Phase 4** merged in #6: pairing screen and `connectionView()` as the single source of
+  connection wording; 5 Chrome scenarios.
+- **Phase 5 (release):** 0.4.0 published 2026-11-14 (payload `1bfa42a`, stable `2a82484`, tag `v0.4.0`,
+  sha256 `7f3d03dd…d4218c6a`). The built `service.js` was smoke-tested, including a live pairing
+  attempt through Funnel. **Not yet done:** module re-add and pairing on a physical TV.

@@ -1,6 +1,6 @@
 # FlixTor TV: how it works today
 
-Verified 2026-11-14 against `main` = tag `v0.3.14` (`8d19fbc`). It is read from source, the
+Verified 2026-11-14 against `main` = tag `v0.4.0` (`2a82484`). It is read from source, the
 public update feed and the release tooling. Items marked **OPEN** are not established.
 Older sections of `README.md` describe earlier releases. Where they disagree, this file wins.
 
@@ -46,8 +46,9 @@ tests) since 0.3.14.
 
 ## 4. Recommendations: verified deployment
 
-- Every released TV service (including 0.3.14) forwards `/recommendations`, `/catalogue`,
-  `/feedback` and `/plots` over **plain HTTP to `relayHost:8772`**. `relayHost` defaults to the home
+- TV services up to 0.3.14 forward `/recommendations`, `/catalogue`,
+  `/feedback` and `/plots` over **plain HTTP to `relayHost:8772`**. Since 0.4.0 an unpaired TV
+  still does exactly this; a paired TV sends them to the remote endpoint instead (see below). `relayHost` defaults to the home
   Mac's LAN address in `src/service.js`. The port is fixed, and a TV cannot set the environment
   override.
 - The relay accepts requests only from loopback and one configured TV address. Gorse listens on
@@ -59,10 +60,13 @@ tests) since 0.3.14.
   updates. For You and profile feedback will fail there with "Start the recommendation relay".
 - Changing the recommendation endpoint changes the TV **service**, so it needs a module
   reinstall. A signed UI payload cannot change it (see `UPDATING.md`).
-- **Since 2026-11-14 (server side only):** the relay also runs a token-only listener on `127.0.0.1:8774`,
+- **Remote recommendations (0.4.0):** the relay also runs a token-only listener on `127.0.0.1:8774`,
   published through Tailscale Funnel on HTTPS port 10000. Each paired device sees only its own profiles
-  (`backend/devices.py`, `backend/pair_device.py`). No released TV service uses it yet (phase 3 of
-  `REMOTE_RECOMMENDATIONS_PLAN.md`).
+  (`backend/devices.py`; pair with `backend/pair_device.py --label … --profile …`). The 0.4.0 TV service
+  (`src/remote-service.js`) pairs over HTTPS pinned to ISRG Root X1/X2 (`remote-trust.json`), stores
+  the token in `remote.json` (mode 600), and uses one precedence: paired remote, else LAN. The UI pairing
+  screen is under Recommendations profile → Connect to recommendations. Pairing needs the 0.4.0
+  **service** (module re-added once); a 0.3.x service shows no pairing controls.
 - **OPEN (historical):** the owner reports that recommendations were moved outside the home network. A full
   search on 2026-11-14 found no such deployment: no cloud project (Vercel lists none for FlixTor),
   no tunnel or remote Docker host, no backend repo, and no running relay outside the home Mac. The
@@ -73,7 +77,7 @@ tests) since 0.3.14.
 ## 5. Signed update and release path
 
 - TVs poll `https://raw.githubusercontent.com/alawiscious/flixtor-tv/main/updates/stable.json`
-  (verified live: `0.3.14`, sha256 `57e40a2f…318c96ff`). A git tag or GitHub Release alone does
+  (verified live: `0.4.0`, sha256 `7f3d03dd…d4218c6a`). A git tag or GitHub Release alone does
   **not** update an installed TV; only `main`'s stable feed does.
 - `build.cjs` builds the bundle and signs the payload (RSA-SHA256) with the private key at
   `../private-updater/signing-key.pem` (sibling of the checkout, never in git). It refuses to run
@@ -95,8 +99,8 @@ tests) since 0.3.14.
 | Command | Covers | Does not cover |
 | --- | --- | --- |
 | `npm run check` | vm and fixture unit tests, updater crypto and HTTP flows | Real browser layout, Samsung |
-| `npm run check:browser` | Headless Chrome against a synthetic watch page: playback → Back → details lifecycle (needs Chrome/Chromium) | FlixTor's real player, Samsung media stack |
-| `python3 -m unittest discover -s backend -p 'test_*.py'` | Relay, profiles, feedback, imports (66 tests) | Live Gorse |
+| `npm run check:browser` | Headless Chrome: playback → Back → details lifecycle, Home hero layout, pairing screen (needs Chrome/Chromium) | FlixTor's real player, Samsung media stack |
+| `python3 -m unittest discover -s backend -p 'test_*.py'` | Relay, profiles, feedback, imports, paired-device listener (78 tests) | Live Gorse |
 
 macOS runs the HTTP updater test natively. The `spawn E2BIG` failure was Linux-only.
 
@@ -104,5 +108,6 @@ macOS runs the HTTP updater test natively. The `spawn E2BIG` failure was Linux-o
 
 - **Playback → Back → frozen details → crash on Samsung.** Fix released in 0.3.14. It passes in
   Chrome; its probable cause is not confirmed and it is not yet verified on a Samsung TV.
-- Home hero long-title overflow (title clipped, actions cut off): fix proposed in PR #3
-  (`fix/home-hero-layout`). Not yet released.
+- Home hero long-title overflow: fixed in 0.4.0 (Chrome-verified at 720p/1080p/4K; not yet seen on a TV).
+- Remote pairing: released in 0.4.0. Not yet verified on a Samsung TV, in particular the 2019 model's
+  Node/OpenSSL handshake with the Let's Encrypt ECDSA chain.
