@@ -24,8 +24,9 @@ async function openPage(cdp,url,route){
   const {sessionId}=await cdp.send('Target.attachToTarget',{targetId,flatten:true});
   const s=(m,p)=>cdp.send(m,p,sessionId);
   cdp.on(d=>{if(d.sessionId!==sessionId||d.method!=='Fetch.requestPaused')return;const html=route(d.params.request.url,d.params.resourceType);
-    if(html!=null)s('Fetch.fulfillRequest',{requestId:d.params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:Buffer.from(html).toString('base64')});
-    else s('Fetch.failRequest',{requestId:d.params.requestId,errorReason:'BlockedByClient'});});
+    // A request can still be in flight when its tab closes; that answer is moot, not a test failure.
+    if(html!=null)s('Fetch.fulfillRequest',{requestId:d.params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:Buffer.from(html).toString('base64')}).catch(()=>{});
+    else s('Fetch.failRequest',{requestId:d.params.requestId,errorReason:'BlockedByClient'}).catch(()=>{});});
   await s('Fetch.enable',{patterns:[{urlPattern:'*'}]});await s('Page.enable');await s('Runtime.enable');
   const evaluate=async expr=>{const r=await s('Runtime.evaluate',{expression:expr,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception&&r.exceptionDetails.exception.description||r.exceptionDetails.text);return r.result.value;};
   const codes={Escape:27,Back:10009,ArrowUp:38,ArrowDown:40,ArrowLeft:37,ArrowRight:39,Enter:13};
