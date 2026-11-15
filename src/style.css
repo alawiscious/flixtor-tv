@@ -77,3 +77,4 @@ body.ftv-native a:focus,body.ftv-native button:focus,body.ftv-native input:focus
   #ftv .sidebar-bottom button{font-size:16px;min-height:34px;padding-top:6px;padding-bottom:6px}
   #ftv .connection{font-size:16px}
 }
+#ftv .pair-code{font:600 54px/1.2 Menlo,Consolas,monospace;letter-spacing:.12em;margin:18px 0 6px;color:var(--accent)}#ftv .pair-keyboard button{width:56px;height:52px;font-size:20px}#ftv .pair-keyboard .wide{width:120px}

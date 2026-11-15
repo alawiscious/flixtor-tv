@@ -15,7 +15,7 @@ function fixture(){
     row(parent,cls){return parent.appendChild(element('div',cls));},
     button(text,fn,cls){let b=element('button',cls,text);b.click=fn;return b;},
     startDialog(title){if(context.dialog)context.dialog.isConnected=false;const d=element('div','overlay');d.title=title;context.dialog=d;const wrap=d.appendChild(element('div','detail-wrap'));wrap.appendChild(context.button('← Back',()=>{}));created.push(d);return wrap;},
-    focus(el){if(el)context.document.activeElement=el;},preserveRender(){},render(){},useRecommendationPack(pack){context.lastPack=pack;},
+    connectionView(){return {pairable:false,hint:'Profiles load from your recommendation server. Keep the Mac running.'};},refreshConnection(done){if(done)done();},remoteConnection:null,focus(el){if(el)context.document.activeElement=el;},preserveRender(){},render(){},useRecommendationPack(pack){context.lastPack=pack;},
     main:{querySelector(){return {tagName:'BUTTON'};}},
     XMLHttpRequest:function(){request=this;this.open=()=>{};this.send=()=>{};}
   };
