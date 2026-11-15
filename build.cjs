@@ -30,7 +30,8 @@ console.log('Built tv.js and FlixTor_TV_Preview.html');
 
 const shell='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FlixTor TV</title></head><body><script>'+bundle.replace(/<\/script/gi,'<\\/script')+'</script></body></html>';
 fs.writeFileSync(path.join(root,'FlixTor_TV_Live.html'),shell);
-fs.writeFileSync(path.join(root,'service.js'),'/* Generated TizenBrew service; stable updater protocol 1 */\nvar FTV_SHELL='+JSON.stringify(shell)+';\nvar FTV_BASELINE='+JSON.stringify(envelope)+';\nvar FTV_UPDATE_PUBLIC_KEY='+JSON.stringify(trust.pem)+';\n'+fs.readFileSync(path.join(root,'src/updater-service.js'),'utf8')+'\n'+fs.readFileSync(path.join(root,'src/service.js'),'utf8'));
+const {serviceCode,remoteTrust}=require('./bundle.cjs');
+fs.writeFileSync(path.join(root,'service.js'),'/* Generated TizenBrew service; stable updater protocol 1 */\nvar FTV_SHELL='+JSON.stringify(shell)+';\nvar FTV_BASELINE='+JSON.stringify(envelope)+';\nvar FTV_UPDATE_PUBLIC_KEY='+JSON.stringify(trust.pem)+';\nvar FTV_REMOTE_TRUST='+JSON.stringify(remoteTrust(root))+';\n'+serviceCode(root));
 
 // The browser helper reapplies the same module after native FlixTor navigations.
 // No background worker, browsing-history permission, or access to other sites.
