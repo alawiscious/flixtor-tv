@@ -31,12 +31,21 @@
   function episodeFacts(){var id=(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1];return episodeContext.titles&&episodeContext.titles['flixtor:tv:'+id]||null;}
   var explicitOriginal=!localShell&&/^#ftv-(original|search)$/.test(location.hash);
   // Install this before DOMContentLoaded; never conceal sign-in or explicit native mode.
-  var transitionStyle=null;
+  var transitionStyle=null,coverTimer=null,coverError='';
+  // The cover must always come off: a failure while building the screen, or a stalled load, shows the
+  // reason instead of an endless dark screen.
+  function coverFailed(reason){
+    if(!transitionStyle)return;uncoverSource();
+    if(host&&host.isConnected){toast('FlixTor TV could not open this screen: '+reason+' Press Back to return.');return;}
+    var banner=document.createElement('div');banner.id='ftv-load-error';banner.setAttribute('role','alert');banner.textContent='FlixTor TV could not open this screen: '+reason+' Press Back to return.';
+    banner.setAttribute('style','position:fixed;left:5vw;right:5vw;top:5vh;z-index:2147483647;background:#101820;color:#fff;font:24px Arial;padding:24px;border:2px solid #b9ef83;border-radius:14px');(document.body||document.documentElement).appendChild(banner);
+  }
   function coverSource(){
     if(preview||localShell||explicitOriginal||location.hostname!=='flixtor.to'||/^\/(vipsignin|faq|dmca)/.test(location.pathname))return;
+    if(!coverTimer){window.addEventListener('error',function(e){if(transitionStyle&&!coverError)coverError=String(e&&e.message||'Script error')+'.';});coverTimer=setTimeout(function(){coverFailed(coverError||'the page took too long to load.');},12000);}
     if(!transitionStyle){transitionStyle=document.createElement('style');transitionStyle.textContent='html{background:#090d12!important}body{visibility:hidden!important}#ftv,#ftv *{visibility:visible!important}';(document.head||document.documentElement).appendChild(transitionStyle);}
   }
-  function uncoverSource(){if(transitionStyle){transitionStyle.remove();transitionStyle=null;}}
+  function uncoverSource(){clearTimeout(coverTimer);if(transitionStyle){transitionStyle.remove();transitionStyle=null;}}
   function sourcePath(){return localShell?shellSnapshot.path:location.pathname;}
   function sourceHref(){return localShell?shellSnapshot.href:location.href;}
   function siteRoute(path){return 'https://flixtor.to'+path;}
@@ -577,7 +586,7 @@
     if(localShell&&window.FTV_UPDATE_TOKEN)setTimeout(function(){updateRequest('healthy',{version:FTV_VERSION},function(){});},500);
     if(localShell)refreshConnection(function(){if(!dialog&&tab==='For You'&&recommendationState==='error')preserveRender();});
     if(localShell){var pending=incomingPlots?{batch:incomingPlots,more:collectMore}:null;if(!pending){try{pending=JSON.parse(sessionStorage.getItem('ftv.pendingPlots')||'null');}catch(_){}}if(pending)savePlotBatch(pending.batch,pending.more);}
-    var title=!preview&&/^\/watch\//.test(location.pathname)?sourceTitle():null;if(title){if(similarMode)showSimilar(title);else showDetail(title,nav.querySelector('button'));}uncoverSource();
+    var title=!preview&&/^\/watch\//.test(location.pathname)?sourceTitle():null;if(title){try{if(similarMode)showSimilar(title);else showDetail(title,nav.querySelector('button'));}catch(err){coverFailed('details failed ('+String(err&&err.message||err).slice(0,120)+').');}}uncoverSource();
     if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(playbackActive||changes.every(function(c){return host.contains(c.target)||inPlayer(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){if(playbackActive)return;var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
   }
   function boot(){

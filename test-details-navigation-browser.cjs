@@ -48,6 +48,13 @@ const clickText=(p,t)=>p.evaluate(`(function(){var b=Array.prototype.filter.call
       await p.key('ArrowRight');await sleep(150);
       const now=await p.evaluate(active);assert.notEqual(now,'← Back');assert(/My List/.test(now)||now==='▶ Play on FlixTor','focus is in the actions row: '+now);
     });
+    await scenario('a failure while building details shows the reason instead of an endless dark screen',async p=>{
+      // Break the details build only (the Home screen behind it still renders).
+      await p.send('Page.addScriptToEvaluateOnNewDocument',{source:'(function(){var o=Node.prototype.appendChild;Node.prototype.appendChild=function(c){if(c&&c.className==="detail-hero")throw Error("synthetic details failure");return o.call(this,c);};}())'});
+      await p.navigate();
+      await waitFor(p,'getComputedStyle(document.body).visibility==="visible"','page uncovered');
+      await waitFor(p,'!!document.querySelector("#ftv .toast")&&/synthetic details failure/.test(document.querySelector("#ftv .toast").textContent)','visible error');
+    });
     await scenario('More like this → another title → Back returns to the More like this list',async p=>{
       await p.navigate();await waitFor(p,hasDetails,'details');
       assert(await clickText(p,'More like this'));await waitFor(p,'document.querySelector("#ftv main h1")&&/More like Title Alpha/.test(document.querySelector("#ftv main h1").textContent)','similar list');
