@@ -1,6 +1,6 @@
 # FlixTor TV: how it works today
 
-Verified 2026-11-14 against `main` = tag `v0.4.0` (`2a82484`). It is read from source, the
+Verified 2026-11-14 against `main` = tag `v0.4.1` (`25977f1`). It is read from source, the
 public update feed and the release tooling. Items marked **OPEN** are not established.
 Older sections of `README.md` describe earlier releases. Where they disagree, this file wins.
 
@@ -77,7 +77,7 @@ tests) since 0.3.14.
 ## 5. Signed update and release path
 
 - TVs poll `https://raw.githubusercontent.com/alawiscious/flixtor-tv/main/updates/stable.json`
-  (verified live: `0.4.0`, sha256 `7f3d03dd…d4218c6a`). A git tag or GitHub Release alone does
+  (verified live: `0.4.1`, sha256 `2cf9934e…57d5a01f`). A git tag or GitHub Release alone does
   **not** update an installed TV; only `main`'s stable feed does.
 - `build.cjs` builds the bundle and signs the payload (RSA-SHA256) with the private key at
   `../private-updater/signing-key.pem` (sibling of the checkout, never in git). It refuses to run
@@ -109,5 +109,10 @@ macOS runs the HTTP updater test natively. The `spawn E2BIG` failure was Linux-o
 - **Playback → Back → frozen details → crash on Samsung.** Fix released in 0.3.14. It passes in
   Chrome; its probable cause is not confirmed and it is not yet verified on a Samsung TV.
 - Home hero long-title overflow: fixed in 0.4.0 (Chrome-verified at 720p/1080p/4K; not yet seen on a TV).
+- Ratings (0.4.1): per profile and title `rating` ∈ love/like/dislike/hate, separate from the before-watching
+  `preference`; a rating marks the title watched (`backend/feedback.py`). Re-ranking weights are one table in
+  `backend/relay.py`. Gorse gets `rating_<value>` feedback (types declared in the local, gitignored
+  `personalization/gorse.toml`). flixtor.to details pages may POST a rating to the TV service and nothing else.
+  Not yet verified on a TV.
 - Remote pairing: released in 0.4.0. Not yet verified on a Samsung TV, in particular the 2019 model's
   Node/OpenSSL handshake with the Let's Encrypt ECDSA chain.
