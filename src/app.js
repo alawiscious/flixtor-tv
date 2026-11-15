@@ -23,7 +23,7 @@
   var episodeContext={profileId:'',titles:{}};
   try{var contextHash=/^#ftv-(?:details|play|similar)=(.+)$/.exec(location.hash),contextData=contextHash?JSON.parse(decodeURIComponent(contextHash[1])):null;
     if(contextData&&/^ftv-netflix-[a-f0-9]{16}$|^household$/.test(contextData.profileId)&&contextData.titles&&typeof contextData.titles==='object'){
-      episodeContext=contextData;sessionStorage.setItem('ftv.episodeContext.v1',JSON.stringify(contextData));
+      episodeContext=contextData;var storedContext=Object.assign({},contextData);delete storedContext.rated;sessionStorage.setItem('ftv.episodeContext.v1',JSON.stringify(storedContext));
     }else if(location.hostname==='flixtor.to'){episodeContext=JSON.parse(sessionStorage.getItem('ftv.episodeContext.v1')||'null')||episodeContext;}
   }catch(_){}
   function titleNavigation(item,mode){var url=watchURL(item.url).split('#')[0],ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),titles={},context;
@@ -420,28 +420,51 @@
       var eps=preview&&item.episodes?item.episodes:(!preview&&pid(item)===(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1]?readEpisodes():[]);
       if(eps.length){var manualNext=episodeFacts()&&FTV_HISTORY.nextUnwatched(eps,episodeFacts());if(manualNext)nextAction=a.appendChild(button('▶ Next: S'+manualNext.season+' · E'+manualNext.number,function(){rememberView(item);startPlayback();manualNext.native.click();},'primary'));if(!manualNext&&item.resume&&item.resume.complete){var next=FTV_HISTORY.next(eps,item.resume);if(next)a.appendChild(button('▶ Next: S'+next.season+' · E'+next.number,function(){rememberView(item);startPlayback();next.native.click();},'primary'));}seasonChooser(wrap,item,eps);}else{var e=node('div','notice',preview?'Episode chooser is demonstrated on MobLand. Other series open their original FlixTor page.':'The episode chooser appears after opening the series page.');wrap.appendChild(e);}
     }
-    ratingRow(wrap,item);
-    if(preview)wrap.appendChild(node('p','hint','Preview only · live mode uses FlixTor Favorites and its original player.'));focus(nextAction||a.firstChild);
+    var ratedFocus=ratingRow(wrap,item);
+    if(preview)wrap.appendChild(node('p','hint','Preview only · live mode uses FlixTor Favorites and its original player.'));focus(ratedFocus||nextAction||a.firstChild);
   }
-  // Seen it? Rate it. Saves to the TV service's /feedback (details pages may send ratings only).
+  // Seen it? Rate it. FlixTor's CSP (connect-src 'self' *.xcdn.to) blocks requests from its pages to the TV
+  // service, so a rating is saved by a short round trip through the TV shell (navigation is not limited):
+  // details --replace--> 127.0.0.1:8773/tv#{rate} --save--> --replace--> same details, showing the result.
   function ratingRow(wrap,item){
-    if(!preview&&localShell)return;
-    var ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),known=episodeContext.ratings&&episodeContext.ratings[ident],current=RATING_VALUES.indexOf(known)!==-1?known:null,saving=false;
+    if(!preview&&localShell)return null;
+    var ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),known=episodeContext.ratings&&episodeContext.ratings[ident],current=RATING_VALUES.indexOf(known)!==-1?known:null;
     var box=node('div','rating-row');box.appendChild(node('h2','','Seen it? Rate it'));var r=row(box,'actions'),status=node('p','hint');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     var buttons=RATING_OPTIONS.map(function(o){var b=button(o[1],function(){choose(current===o[0]?null:o[0]);},'solid');b.dataset.rating=o[0];r.appendChild(b);return b;});
+    function label(v){var o=RATING_OPTIONS.filter(function(x){return x[0]===v;})[0];return o?o[1]:'';}
     function draw(){buttons.forEach(function(b){var on=b.dataset.rating===current;b.classList.toggle('chosen',on);b.setAttribute('aria-pressed',String(on));});}
     function choose(value){
-      if(saving)return;
       if(preview){current=value;draw();status.textContent='Preview only \u00b7 live mode saves ratings for recommendations.';return;}
-      saving=true;status.textContent='Saving\u2026';
-      var req=new XMLHttpRequest();req.open('POST',(window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/feedback');req.setRequestHeader('Content-Type','application/json');req.timeout=15000;
-      function done(ok,code){saving=false;if(ok){current=value;draw();status.textContent=value?'Saved: '+RATING_OPTIONS.filter(function(o){return o[0]===value;})[0][1]+' \u00b7 recommendations will adjust.':'Rating cleared.';return;}
-        status.textContent=code===0||code===403?'Could not save here. Re-add the FlixTor TV module in TizenBrew to rate from this screen.':'Could not save your rating. Check the recommendation server, then try again.';}
-      req.onload=function(){var v={};try{v=JSON.parse(req.responseText)||{};}catch(_){}done(req.status===200&&v.saved===true,req.status);};
-      req.onerror=req.ontimeout=function(){done(false,0);};
-      req.send(JSON.stringify({profileId:episodeContext.profileId||'household',itemId:ident,rating:value}));
+      buttons.forEach(function(b){b.disabled=true;});status.textContent='Saving\u2026';
+      var titles={};if(episodeContext.titles&&episodeContext.titles[ident])titles[ident]=episodeContext.titles[ident];
+      location.replace((window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/tv#'+encodeURIComponent(JSON.stringify({path:'/home',rate:{profileId:episodeContext.profileId||'household',itemId:ident,rating:value,previous:current,url:watchURL(item.url),titles:titles}})));
     }
     draw();box.appendChild(status);wrap.appendChild(box);
+    var rated=episodeContext.rated;
+    if(rated&&rated.id===ident){
+      status.textContent=rated.result==='saved'?(current?'Saved: '+label(current)+' \u00b7 recommendations will adjust.':'Rating cleared.'):'Could not save your rating. Check the recommendation server, then try again.';
+      return buttons.filter(function(b){return b.dataset.rating===(rated.rating||current);})[0]||buttons[0];
+    }
+    return null;
+  }
+  // Shell side of the round trip: save, then return to the same details page (validated URL only).
+  function saveRatingAndReturn(r){
+    var back=r&&typeof r.url==='string'?watchURL(r.url):null;
+    var valid=!!back&&typeof r.profileId==='string'&&/^(household|ftv-netflix-[a-f0-9]{16})$/.test(r.profileId)&&typeof r.itemId==='string'&&/^flixtor:(tv|movie):\d{1,18}$/.test(r.itemId)&&(r.rating===null||RATING_VALUES.indexOf(r.rating)!==-1);
+    document.body.setAttribute('style','background:#090d12;color:#fff;font:28px Arial;padding:8vw');document.body.textContent=valid?'Saving your rating\u2026':'This rating could not be saved.';
+    if(window.FTV_UPDATE_TOKEN)updateRequest('healthy',{version:FTV_VERSION},function(){}); // a rating stop is a healthy start
+    if(!valid){setTimeout(function(){history.back();},1500);return;}
+    var done=false;
+    function go(result){
+      if(done)return;done=true;
+      var context={profileId:r.profileId,titles:r.titles&&typeof r.titles==='object'&&!Array.isArray(r.titles)?r.titles:{},ratings:{},rated:{id:r.itemId,result:result,rating:r.rating}};
+      var kept=result==='saved'?r.rating:r.previous;if(RATING_VALUES.indexOf(kept)!==-1)context.ratings[r.itemId]=kept;
+      location.replace(back.split('#')[0]+'#ftv-details='+encodeURIComponent(JSON.stringify(context)));
+    }
+    var req=new XMLHttpRequest();req.open('POST',bridgeOrigin+'/feedback');req.setRequestHeader('Content-Type','application/json');req.timeout=15000;
+    req.onload=function(){var v={};try{v=JSON.parse(req.responseText)||{};}catch(_){}go(req.status===200&&v.saved===true?'saved':'failed');};
+    req.onerror=req.ontimeout=function(){go('failed');};
+    req.send(JSON.stringify({profileId:r.profileId,itemId:r.itemId,rating:r.rating}));
   }
   function recommendationHelp(){var wrap=startDialog('How your recommendations work');append(wrap,node('h1','','How picks work'),node('p','recommendation-reason',recommendationInfo&&recommendationInfo.model||'Personalized recommendations from Gorse'));['Genres, release era and media type help find similar titles.','Shared directors and writers add another connection where metadata is available.','Explicit likes and your Good recommendation votes have more weight than ordinary imported viewing.','Ratings after watching count too: Loved it counts most, Liked it adds a little, and Didn\u2019t like it or Hated it push similar titles down (Hated it twice as hard).','Not for me hides that title and lowers similar picks. Already watched hides it without treating it as a like.','Recent interests receive more weight. The list mixes similar and more varied choices.','Other-user recommendations need separate profiles and overlapping ratings. Story-level AI matching needs additional plot data and a local model or API.'].forEach(function(text){var p=node('p','notice',text);p.tabIndex=0;p.setAttribute('data-focus-copy','1');wrap.appendChild(p);});focus(wrap.querySelector('button'));}
   function showRecommendation(item,from){
@@ -617,6 +640,7 @@
     if(!preview&&window.MutationObserver){var queued;sourceObserver=new MutationObserver(function(changes){if(playbackActive||changes.every(function(c){return host.contains(c.target)||inPlayer(c.target);}))return;clearTimeout(queued);queued=setTimeout(function(){if(playbackActive)return;var before=all.map(function(i){return i.url+':'+i.favorite;}).join('|');refreshCards();sharePublicCatalogue();var after=all.map(function(i){return i.url+':'+i.favorite;}).join('|');if(before!==after&&!dialog){var selected=document.activeElement&&document.activeElement.dataset.item;preserveRender();}},250);});sourceObserver.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});}
   }
   function boot(){
+    if(localShell&&shellSnapshot&&shellSnapshot.rate){saveRatingAndReturn(shellSnapshot.rate);return;}
     if(!explicitOriginal){try{sessionStorage.removeItem('ftv.original.v1');}catch(_){}}
     // Playback stays with FlixTor so its progress/sync behavior remains authoritative.
     if(!preview&&!explicitOriginal&&!detailsMode&&(/^\/watch\/movie\//.test(location.pathname)||/\/season\/\d+\/episode\/\d+/.test(location.pathname))){startPlayback();return;}
