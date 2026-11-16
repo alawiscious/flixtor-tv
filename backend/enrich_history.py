@@ -10,6 +10,8 @@ from history_index import parts,norm
 MOVIES={'movie','tvMovie'}
 SERIES={'tvSeries','tvMiniSeries'}
 PROMO=re.compile(r'\b(?:teaser|trailer|sneak peek|preview)\b',re.I)
+SEASON=re.compile(r'\bSeason\s+(\d+|One|Two|Three|Four|Five)\b',re.I)
+SEASON_WORDS={'one':1,'two':2,'three':3,'four':4,'five':5}
 
 
 def genre_tags(genres):
@@ -45,7 +47,7 @@ class Resolver:
             row=self.conn.execute('select * from titles where id=?',(ident,)).fetchone();self.title_cache[ident]=dict(row) if row else None
         return self.title_cache[ident]
     def explicit_series(self,record):
-        season=re.search(r'\bSeason\s+(?:\d+|One|Two|Three|Four|Five)\b',record['title'],re.I)
+        season=SEASON.search(record['title'])
         if not season:return [],None
         if self.series_names is None:
             self.series_names=collections.defaultdict(list)
@@ -74,6 +76,18 @@ class Resolver:
             if record.get('end') and item['runtime'] and item['type'] in MOVIES|{'tvEpisode'} and record['end']>item['runtime']*60+180:continue
             matches.append(item)
         return matches
+    def episode(self,series,record):
+        """(season, episode) of an observation resolved to `series`, only when the series' own episode
+        list names exactly one. A season stated in the source must agree with it; a conflict is not resolved."""
+        key=record.get('episode_key') or parts(record['title'])[0]
+        found={(r[0],r[1]) for r in self.conn.execute('select e.season,e.episode from episodes e join names n on n.id=e.id where e.parent=? and n.key=?',(series,key)) if r[0] and r[1]}
+        stated=SEASON.search(record['title'])
+        if stated:
+            season=int(stated[1]) if stated[1].isdigit() else SEASON_WORDS[stated[1].casefold()]
+            found={f for f in found if f[0]==season}
+        return next(iter(found)) if len(found)==1 else None
+    def total_episodes(self,series):
+        return self.conn.execute('select count(*) from episodes where parent=? and season>0 and episode is not null',(series,)).fetchone()[0]
     def direct(self,candidates):
         # Multiple seasons/episodes can share a title; only their common parent is relevant.
         ids={c.get('parent') if c['type']=='tvEpisode' else c['id'] for c in candidates}
@@ -131,7 +145,7 @@ def enrich(db,index,items,feedback=()):
         g['events'].append(row)
         if row['kind'] in {'playback','summary'}:
             key=row.get('episode_key') or parts(row['title'])[0];g['observations'][key]=max(g['observations'].get(key,0),row['seconds'])
-    seeds={};seen=set();seen_at={};excluded=set();crosswalk={};review=[]
+    seeds={};seen=set();seen_at={};excluded=set();crosswalk={};review=[];viewing=[];episode_rows=episode_rows_numbered=0
     for ident,g in groups.items():
         m=g['metadata'];typ='tv' if m['type'] in SERIES else 'movie';genres=genre_tags(m['genres'].split(','))
         canonical=[i for i in items.values() if norm(i['title'])==norm(m['title']) and i['type']==typ and i['year']==str(m['year'])]
@@ -140,6 +154,20 @@ def enrich(db,index,items,feedback=()):
         kinds={r['kind'] for r in g['events']};seconds=sum(g['observations'].values());at=max(r['at'] for r in g['events'])
         if g['observations'] and len(canonical)==1:
             seen.add(item['id']);seen_at[item['id']]=max(r['at'] for r in g['events'] if r['kind'] in {'playback','summary'})
+        plays=[r for r in g['events'] if r['kind'] in {'playback','summary'}]
+        if plays:
+            # Viewing facts as the export states them: End Point Seconds is how far a play got (playback rows only).
+            # Whether they amount to "watched" is decided in watched.py only.
+            episodes={}
+            for row in plays if typ=='tv' else []:
+                if not row['method'].startswith('episode'):continue
+                episode_rows+=1;found=resolver.episode(ident,row)
+                if not found:continue
+                # Playback and the watch summary are two observations of one viewing: longest, never the sum.
+                episode_rows_numbered+=1;played=episodes.setdefault(found,[0,0]);played[0]=max(played[0],row['seconds']);played[1]=max(played[1],row['end'] or 0)
+            viewing.append(dict(item=item,metadata_id=ident,seconds=seconds,position=max((r['end'] or 0 for r in plays),default=0) or None if typ=='movie' else None,at=max(r['at'] for r in plays),
+                episodes=[[season,number,played,reached or None] for (season,number),(played,reached) in sorted(episodes.items())],
+                total_episodes=resolver.total_episodes(ident) if episodes else 0))
         explicit=sorted((r for r in g['events'] if r['kind'] in {'like','dislike'}),key=lambda r:r['at'])
         kinds-= {'like','dislike'}
         if explicit:kinds.add(explicit[-1]['kind'])
@@ -152,8 +180,10 @@ def enrich(db,index,items,feedback=()):
         for row in g['events']:review.append(dict(source_id=row['source_id'],source_title=row['title'],canonical_id=item['id'],signal=row['kind'],method=row['method'],metadata_id=ident))
     report=dict(source_observations=len(rows),resolved_observations=len(resolved),resolved_titles=len(groups),
                 resolved_episode_observations=sum(r['method'].startswith('episode') for r in resolved),
+                episode_rows=episode_rows,episode_rows_numbered=episode_rows_numbered,
+                viewed_titles=len(viewing),viewed_films_with_position=sum(1 for v in viewing if v['position']),
                 supported_series=len(supported),metadata_interest_titles=len(seeds),explicit_likes_resolved=sum(s.get('feedback_type')=='like' for s in seeds.values()),
                 unresolved_observations=len(unresolved),unresolved_reasons=dict(collections.Counter(r['reason'] for r in unresolved)),
                 matched_playback_source_ids=sorted({r['source_id'] for r in resolved if r['kind']=='playback'}))
     resolver.conn.close()
-    return dict(seeds=seeds,seen=seen,seen_at=seen_at,excluded=excluded,review=review,unresolved=unresolved,report=report)
+    return dict(seeds=seeds,seen=seen,seen_at=seen_at,excluded=excluded,review=review,unresolved=unresolved,report=report,viewing=viewing)

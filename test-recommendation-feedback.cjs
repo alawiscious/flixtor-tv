@@ -5,7 +5,7 @@ function fixture(){
  const controls=[],requests=[];
  function el(tag,cls,text){return {textContent:text||'',dataset:{},children:[],classList:{toggle(){}},setAttribute(k,v){this[k]=v;},appendChild(c){this.children.push(c);if(!this.firstChild)this.firstChild=c;return c;}};}
  const item={title:'Example series',url:'/tv/42',profileId:'alec',feedback:{}};
- const context={main:{querySelector(){return null;}},preserveRender(){context.renders=(context.renders||0)+1;},document:{activeElement:null},lastRecommendationBundle:null,profilePacks:[],returnFocus:null,dialog:{},recommendationsDirty:false,connectRecommendations:true,selectedProfile:'alec',bridgeOrigin:'http://fixture',recommendations:[{...item,title:'First',url:'/tv/41'},item,{...item,title:'Last',url:'/tv/43'}],
+ const context={main:{querySelector(){return null;}},preserveRender(){context.renders=(context.renders||0)+1;},document:{activeElement:null},lastRecommendationBundle:null,profilePacks:[],returnFocus:null,dialog:{},recommendationsDirty:false,connectRecommendations:true,selectedProfile:'alec',bridgeOrigin:'http://fixture',episodeContext:{profileId:'alec',titles:{}},recommendations:[{...item,title:'First',url:'/tv/41'},item,{...item,title:'Last',url:'/tv/43'}],
   startDialog(){return el();},node:el,row(parent,cls){return parent.appendChild(el('div',cls));},append(p,...cs){cs.forEach(c=>p.appendChild(c));},
   button(label,fn){const b=el('button','',label);b.click=()=>{context.document.activeElement=b;fn();};controls.push(b);return b;},focus(b){context.document.activeElement=b;},
   RATING_OPTIONS:[['love','Loved it'],['like','Liked it'],['dislike','Didn\u2019t like it'],['hate','Hated it']],RATING_VALUES:['love','like','dislike','hate'],
@@ -25,6 +25,11 @@ function fixture(){
  f.click('Already watched');f.respond(1,{preference:'like',watched:true});
  assert.equal(f.item.feedback.watched,true);assert.equal(f.item.feedback.preference,'like');
  assert.deepEqual(Array.from(f.context.recommendations,i=>i.title),['First','Last'],'Watched title is removed, remaining order is stable');
+ // The confirmed choice reaches the shared watched map at once, and clearing it removes only an own choice.
+ assert.deepEqual(JSON.parse(JSON.stringify(f.context.episodeContext.watched)),{'flixtor:tv:42':{watched:true,source:'manual'}});
+ f.context.episodeContext.watched['flixtor:tv:7']={watched:true,source:'netflix'};
+ f.click('Already watched');f.respond(2,{preference:'like',watched:null});
+ assert.deepEqual(JSON.parse(JSON.stringify(f.context.episodeContext.watched)),{'flixtor:tv:7':{watched:true,source:'netflix'}});
 }
 {
  const f=fixture();f.click('Good recommendation');f.click('Already watched');

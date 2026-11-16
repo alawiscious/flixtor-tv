@@ -41,6 +41,23 @@ class MetadataHistoryTests(unittest.TestCase):
         result=enrich(self.db,self.index,{})
         self.assertEqual(result['report']['resolved_observations'],2)
         self.assertEqual(result['seeds'],{}) # not 1400 seconds
+    def test_viewing_facts_keep_position_and_which_episode(self):
+        self.add('sessions',('m','Long Movie',1800,'2025-01-01',5400))
+        self.add('watch_summaries',('ms','Long Movie',2400,'2025-01-03',0))
+        self.add('sessions',('e1','Unique First Episode-Example Series - Season 1',700,'2025-01-01',2600))
+        self.add('watch_summaries',('s1','Unique First Episode',900,'2025-01-02',0))
+        self.add('sessions',('e2','Unique Second Episode-Example Series - Season 2',700,'2025-01-02',700))
+        r=enrich(self.db,self.index,{});viewing={v['item']['id']:v for v in r['viewing']}
+        film=viewing['history:imdb:movie']
+        self.assertEqual((film['metadata_id'],film['seconds'],film['position'],film['at'],film['episodes']),('movie',2400,5400,'2025-01-03',[]),'longest observation, furthest position')
+        series=viewing['history:imdb:show']
+        # Two observations of episode 1 are one viewing (longest, never the sum). The second episode's stated season
+        # contradicts the series' own list, so which episode it was stays unresolved.
+        self.assertEqual(series['episodes'],[[1,1,900,2600]]);self.assertIsNone(series['position']);self.assertEqual(series['total_episodes'],2)
+        self.assertEqual((r['report']['episode_rows'],r['report']['episode_rows_numbered'],r['report']['viewed_films_with_position']),(3,2,1))
+    def test_viewing_states_no_position_when_the_export_has_none(self):
+        self.add('watch_summaries',('s','Long Movie',1800,'2025-01-01',0))
+        self.assertIsNone(enrich(self.db,self.index,{})['viewing'][0]['position'])
     def test_remakes_are_not_guessed(self):
         self.add('sessions',('m','Ambiguous Title',1800,'2025-01-01',1800))
         self.assertEqual(enrich(self.db,self.index,{})['seeds'],{})

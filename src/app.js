@@ -26,11 +26,16 @@
       episodeContext=contextData;var storedContext=Object.assign({},contextData);delete storedContext.rated;sessionStorage.setItem('ftv.episodeContext.v1',JSON.stringify(storedContext));
     }else if(location.hostname==='flixtor.to'){episodeContext=JSON.parse(sessionStorage.getItem('ftv.episodeContext.v1')||'null')||episodeContext;}
   }catch(_){}
+  // Every reader of a title's watched state goes through here (see FTV_HISTORY.titleState).
+  function watchedState(item){return FTV_HISTORY.titleState(item,episodeContext.watched,episodeContext.watchedNames);}
   function titleNavigation(item,mode){var url=watchURL(item.url).split('#')[0],ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),titles={},context;
-    if(episodeContext.titles&&episodeContext.titles[ident])titles[ident]=episodeContext.titles[ident];
+    // The series' episode facts travel under its id, including an import layer the service only had by name.
+    var facts=FTV_HISTORY.episodeFacts(item,episodeContext.titles,episodeContext.episodeNames);if(facts)titles[ident]=facts;
     context={profileId:selectedProfile||episodeContext.profileId||'household',titles:titles};
     // A known rating travels with the title (keyed by id, so it never applies to another title).
     if(item.feedback&&RATING_VALUES.indexOf(item.feedback.rating)!==-1){context.ratings={};context.ratings[ident]=item.feedback.rating;}
+    // The resolved watched entry travels the same way: FlixTor pages cannot ask the service.
+    var seen=watchedState(item);if(seen.source!=='native'&&seen.source!=='none'){context.watched={};context.watched[ident]={watched:seen.watched,source:seen.source};}
     return url+'#ftv-'+mode+'='+encodeURIComponent(JSON.stringify(context));
   }
   function episodeFacts(){var id=(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1];return episodeContext.titles&&episodeContext.titles['flixtor:tv:'+id]||null;}
@@ -136,7 +141,7 @@
     var before=favorite(item);b.disabled=true;native.click();
     var attempts=0,timer=setInterval(function(){var after=favorite(item);if(after!==before||++attempts===15){clearInterval(timer);b.disabled=false;if(dialog&&!dialog.contains(document.activeElement))focus(b,false);b.textContent=after?'✓ In My List':'+ My List';b.setAttribute('aria-pressed',String(after));toast(after!==before?'FlixTor Favorites updated.':'FlixTor did not confirm the change. Check Sync settings.');}},150);
   }
-  function card(item){var b=button('',function(){if(item.reason)showRecommendation(item,b);else showDetail(item,b);},'card');b.setAttribute('aria-label',item.title);b.dataset.item=itemKey(item);b.addEventListener('focus',function(){var section=b.closest('.section');if(section){var note=section.querySelector('.focus-preview');if(!note){note=node('p','focus-preview');section.insertBefore(note,section.querySelector('.rail'));}note.textContent=item.title+' · '+(item.reason||[item.year,typeLabel(item),item.meta].filter(Boolean).join(' · '));}});var art=node('div','poster'),im=node('img');im.src=item.image;im.alt='';im.loading='lazy';im.onerror=function(){im.style.visibility='hidden';};append(art,node('div','poster-fallback',item.title),im);if(favorite(item))art.appendChild(node('span','poster-badge','IN MY LIST'));var body=node('div','card-copy');if(item.reason)b.setAttribute('aria-description',item.reason);append(body,node('span','card-title',item.title),node('span','card-meta',[item.year,typeLabel(item),item.rating?'★ '+item.rating:''].filter(Boolean).join(' · ')));if(item.resume)body.appendChild(node('span','card-meta',FTV_HISTORY.label(item.resume)));append(b,art,body);if(item.progress>0){var p=node('div','progress'),fill=node('span');fill.style.width=item.progress+'%';p.appendChild(fill);b.appendChild(p);}return b;}
+  function card(item){var b=button('',function(){if(item.reason)showRecommendation(item,b);else showDetail(item,b);},'card');b.setAttribute('aria-label',item.title);b.dataset.item=itemKey(item);b.addEventListener('focus',function(){var section=b.closest('.section');if(section){var note=section.querySelector('.focus-preview');if(!note){note=node('p','focus-preview');section.insertBefore(note,section.querySelector('.rail'));}note.textContent=item.title+' · '+(item.reason||[item.year,typeLabel(item),item.meta].filter(Boolean).join(' · '));}});var art=node('div','poster'),im=node('img');im.src=item.image;im.alt='';im.loading='lazy';im.onerror=function(){im.style.visibility='hidden';};append(art,node('div','poster-fallback',item.title),im);if(favorite(item))art.appendChild(node('span','poster-badge','IN MY LIST'));var watchedLabel=FTV_HISTORY.titleLabel(watchedState(item));if(watchedLabel){art.appendChild(node('span','poster-badge watched-badge','\u2713 WATCHED'));b.setAttribute('aria-label',item.title+', '+watchedLabel);}var body=node('div','card-copy');if(item.reason)b.setAttribute('aria-description',item.reason);append(body,node('span','card-title',item.title),node('span','card-meta',[item.year,typeLabel(item),item.rating?'★ '+item.rating:''].filter(Boolean).join(' · ')));if(item.resume)body.appendChild(node('span','card-meta',FTV_HISTORY.label(item.resume)));append(b,art,body);if(item.progress>0){var p=node('div','progress'),fill=node('span');fill.style.width=item.progress+'%';p.appendChild(fill);b.appendChild(p);}return b;}
   function rail(title,items,note){if(!items.length)return;var sec=node('section','section'),head=node('div','section-head');append(head,node('h2','',title),node('span','muted',note||items.length+' titles'));sec.appendChild(head);sec.appendChild(node('p','focus-preview','Use arrows to explore'));var r=row(sec,'rail');items.forEach(function(i){r.appendChild(card(i));});main.appendChild(sec);}
   function grid(items){var g=node('div','grid');items.forEach(function(i,index){var c=card(i);c.dataset.gridIndex=String(index);g.appendChild(c);});main.appendChild(g);}
   function heading(title,description){var e=node('div','page-heading');append(e,node('p','eyebrow','YOUR TV, SIMPLIFIED'),node('h1','',title));if(description)e.appendChild(node('p','muted',description));main.appendChild(e);}
@@ -268,7 +273,7 @@
     req.send(JSON.stringify(payload));
   }
   function useRecommendationPack(data){
-    var chosen=data||{};episodeContext={profileId:chosen.id||selectedProfile||'household',titles:chosen.episodeProgress||{}};
+    var chosen=data||{};episodeContext={profileId:chosen.id||selectedProfile||'household',titles:chosen.episodeProgress||{},watched:chosen.watched&&typeof chosen.watched==='object'?chosen.watched:{},watchedNames:chosen.watchedNames&&typeof chosen.watchedNames==='object'?chosen.watchedNames:{},episodeNames:chosen.importedEpisodeNames&&typeof chosen.importedEpisodeNames==='object'?chosen.importedEpisodeNames:{}};
     recommendations=(chosen.items||[]).slice(0,24).filter(function(i){return typeof i.title==='string'&&typeof i.url==='string'&&watchURL(i.url)&&typeof i.image==='string'&&/^https:\/\/img\.xcdn\.to\//.test(i.image);}).map(function(i){return {title:i.title,year:String(i.year||''),meta:String(i.meta||''),image:i.image,url:watchURL(i.url),reason:String(i.reason||'From your imported history'),rating:String(i.rating||''),feedback:i.feedback||{},profileId:chosen.id||'household'};});
     recommendationInfo={seedCount:Number(chosen.seedCount)||0,model:String(chosen.model||'Genre similarity'),scope:String(chosen.scope||'Imported history'),profileName:String(chosen.name||'Household · Amazon unassigned'),stale:!!chosen.stale,cacheStatus:chosen.cacheStatus||'fresh',generatedAt:chosen.generatedAt||null};
   }
@@ -413,6 +418,7 @@
   function showDetail(item,from){
     if(!preview&&(localShell||!sourceTitle()||itemKey(sourceTitle())!==itemKey(item))){rememberView(item);location.assign(titleNavigation(item,'details'));return;}
     if(!preview&&!localShell)FTV_HISTORY.decorate(item);detailItem=item;var wrap=startDialog(item.title,from);detailItem=item;var top=node('div','detail-hero'),im=node('img','detail-poster');im.src=item.image;im.alt=item.title;im.onerror=function(){im.style.display='none';};var body=node('div','detail-info');append(body,node('p','eyebrow',tv(item)?'SERIES':'MOVIE'),node('h1','',item.title),meta(item));if(item.reason)body.appendChild(node('p','recommendation-reason',item.reason));var description=node('p','muted',item.description||(tv(item)?'Choose a season and episode, or open this series on FlixTor.':'Open this movie in the existing FlixTor player.'));body.appendChild(description);var a=row(body,'actions'),nextAction=null;
+    var seenState=watchedState(item),seenLabel=FTV_HISTORY.titleLabel(seenState);if(seenLabel&&seenState.source!=='native')body.appendChild(node('p','resume-summary watched-summary','\u2713 '+seenLabel));
     if(item.resume){body.appendChild(node('p','resume-summary',FTV_HISTORY.label(item.resume)));if(!item.resume.complete&&!FTV_HISTORY.episodeState(item.resume,item.resume.season,item.resume.number,episodeFacts()).watched)a.appendChild(button('▶ Resume '+(item.resume.season?'S'+item.resume.season+' · E'+item.resume.number:''),function(){if(tv(item)){var ep=readEpisodes().filter(function(e){return e.season===item.resume.season&&e.number===item.resume.number;})[0];if(ep&&ep.native){rememberView(item);startPlayback();ep.native.click();}}else openTitle(item);},'primary'));}
     a.appendChild(button(episode(item)?'▶ Play episode':tv(item)?'▶ Choose episodes':'▶ Play on FlixTor',function(){if(tv(item)&&!episode(item)){var ep=wrap.querySelector('.season-row button');if(ep)focus(ep);else openTitle(item);}else openTitle(item);},'primary'));
     var save=button(!preview&&!nativeFavorite(item)?'Manage My List on FlixTor':favorite(item)?'✓ In My List':'+ My List',function(){saveFavorite(item,save);});save.setAttribute('aria-pressed',String(favorite(item)));a.appendChild(save);a.appendChild(button('More like this',function(){dialog.remove();dialog=null;detailItem=null;showSimilar(item);}));append(top,im,body);wrap.appendChild(top);
@@ -437,7 +443,7 @@
       if(preview){current=value;draw();status.textContent='Preview only \u00b7 live mode saves ratings for recommendations.';return;}
       buttons.forEach(function(b){b.disabled=true;});status.textContent='Saving\u2026';
       var titles={};if(episodeContext.titles&&episodeContext.titles[ident])titles[ident]=episodeContext.titles[ident];
-      location.replace((window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/tv#'+encodeURIComponent(JSON.stringify({path:'/home',rate:{profileId:episodeContext.profileId||'household',itemId:ident,rating:value,previous:current,url:watchURL(item.url),titles:titles}})));
+      location.replace((window.FTV_BRIDGE_ORIGIN||'http://127.0.0.1:8773')+'/tv#'+encodeURIComponent(JSON.stringify({path:'/home',rate:{profileId:episodeContext.profileId||'household',itemId:ident,rating:value,previous:current,url:watchURL(item.url),titles:titles,watched:episodeContext.watched&&episodeContext.watched[ident]||null}})));
     }
     draw();box.appendChild(status);wrap.appendChild(box);
     var rated=episodeContext.rated;
@@ -459,6 +465,8 @@
       if(done)return;done=true;
       var context={profileId:r.profileId,titles:r.titles&&typeof r.titles==='object'&&!Array.isArray(r.titles)?r.titles:{},ratings:{},rated:{id:r.itemId,result:result,rating:r.rating}};
       var kept=result==='saved'?r.rating:r.previous;if(RATING_VALUES.indexOf(kept)!==-1)context.ratings[r.itemId]=kept;
+      // A saved rating means the title was seen (the service resolves it the same way); otherwise keep what was known.
+      var seen=result==='saved'&&r.rating!==null?{watched:true,source:'manual'}:r.watched;if(seen&&typeof seen==='object'){context.watched={};context.watched[r.itemId]=seen;}
       location.replace(back.split('#')[0]+'#ftv-details='+encodeURIComponent(JSON.stringify(context)));
     }
     var req=new XMLHttpRequest();req.open('POST',bridgeOrigin+'/feedback');req.setRequestHeader('Content-Type','application/json');req.timeout=15000;
@@ -500,6 +508,9 @@
         if(finished)return;finished=true;saving=false;confirmed=Object.assign({},result.state);
         if(revision!==sentRevision){persist();return;}
         item.feedback=Object.assign({},confirmed);draw();
+        // Reflect the confirmed choice in the watched map now; the next bundle replaces it with the service's resolution.
+        if(!episodeContext.watched)episodeContext.watched={};
+        if(typeof confirmed.watched==='boolean')episodeContext.watched[payload.itemId]={watched:confirmed.watched,source:'manual'};else if(episodeContext.watched[payload.itemId]&&episodeContext.watched[payload.itemId].source==='manual')delete episodeContext.watched[payload.itemId];
         // Keep the remaining suggestions in place. A preference must not move a card while
         // its watch-state choice is being entered; the next normal refresh can rerank picks.
         var hidden=confirmed.watched===true||confirmed.preference==='dislike',before=recommendations.slice(),oldIndex=before.indexOf(item);

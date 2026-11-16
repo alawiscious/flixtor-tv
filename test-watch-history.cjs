@@ -7,6 +7,39 @@ assert.equal(h.parse('secret:1','1:2:3'),null);assert(h.label(h.latest('4018954'
 const episodes=[{season:3,number:1},{season:2,number:15},{season:2,number:14}];assert.equal(h.next(episodes,{season:2,number:14}).number,15);assert.equal(h.next(episodes,{season:2,number:15}).season,3);assert.equal(h.next(episodes,{season:3,number:1}),null);assert.equal(h.next(episodes,{season:1,number:1}),null);
 // The native player is the sole end-of-episode scheduler: overlay only delegates user clicks.
 const nextSource=fs.readFileSync('src/next-episode.js','utf8');assert(!/\.ended\s*\)\s*advance\(/.test(nextSource));assert(nextSource.includes('ep.native.click()'));
+// Title-level watched state: the service's resolved map first, then FlixTor's own finished movie position.
+{const film={url:'https://flixtor.to/watch/movie/7/example'},show={url:'https://flixtor.to/watch/tv/4018954/seal-team'},done={complete:true},plain=v=>JSON.parse(JSON.stringify(v));
+ const map={'flixtor:movie:7':{watched:true,source:'netflix'},'flixtor:tv:4018954':{watched:false,source:'manual'},'flixtor:movie:8':{watched:true,source:'somewhere'},'flixtor:movie:9':{watched:'yes',source:'manual'}};
+ assert.deepEqual(plain(h.titleState(film,map)),{watched:true,source:'netflix'});assert.equal(h.titleLabel(h.titleState(film,map)),'Watched on Netflix');
+ assert.deepEqual(plain(h.titleState(Object.assign({resume:done},show),map)),{watched:false,source:'manual'},'own choice beats native progress');assert.equal(h.titleLabel(h.titleState(show,map)),'');
+ assert.deepEqual(plain(h.titleState({url:'https://flixtor.to/watch/tv/7/example',resume:done},map)),{watched:false,source:'none'},'ids are type-scoped and one finished episode never marks a series');
+ for(const id of [8,9])assert.deepEqual(plain(h.titleState({url:'https://flixtor.to/watch/movie/'+id+'/x'},map)),{watched:false,source:'none'},'invalid entries are ignored');
+ assert.deepEqual(plain(h.titleState({url:'https://flixtor.to/watch/movie/8/x',resume:done},map)),{watched:true,source:'native'});assert.equal(h.titleLabel({watched:true,source:'native'}),'Watched on FlixTor');
+ assert.equal(h.titleLabel({watched:true,source:'amazon'}),'Watched on Prime Video');assert.equal(h.titleLabel({watched:true,source:'manual'}),'Marked as watched');
+ for(const bad of [null,undefined,{},{url:'https://example.com/x'}])assert.deepEqual(plain(h.titleState(bad,map)),{watched:false,source:'none'});
+ assert.deepEqual(plain(h.titleState(film,null)),{watched:false,source:'none'});assert.equal(h.titleLabel(null),'');
+ // Finished titles the service only knows by name (same cases as backend/test_watched.py NAME_CASES).
+ const url=kind=>kind==='short'?'https://flixtor.to/short/1':'https://flixtor.to/watch/'+kind+'/1/x';
+ for(const [[kind,title,year],expected] of [[['movie','Am\u00e9lie','2001'],'movie|amelie|2001'],[['tv','Se7en: The  Beginning!',2019],'tv|se7enthebeginning|2019'],[['movie','Stra\u00dfe','1999'],'movie|strae|1999'],
+   [['movie','Film','2020 \u00b7 1h 30m'],'movie|film|2020'],[['movie','Film',''],null],[['movie','!!!','2020'],null],[['short','Film','2020'],null],[['movie','Film','0000'],null]])assert.equal(h.nameKey({url:url(kind),title,year}),expected||'',JSON.stringify([kind,title,year]));
+ assert.equal(h.nameKey(null),'');
+ const named={url:'https://flixtor.to/watch/movie/50/named',title:'Named Film',year:'2020'},names={netflix:['movie|other|2020'],amazon:['movie|namedfilm|2020']};
+ assert.deepEqual(plain(h.titleState(named,map,names)),{watched:true,source:'amazon'});assert.equal(h.titleLabel(h.titleState(named,map,names)),'Watched on Prime Video');
+ assert.deepEqual(plain(h.titleState(Object.assign({},named,{year:'2021'}),map,names)),{watched:false,source:'none'},'another year is another title');
+ assert.deepEqual(plain(h.titleState(Object.assign({},named,{url:'https://flixtor.to/watch/tv/50/named'}),map,names)),{watched:false,source:'none'},'a series of the same name is another title');
+ assert.deepEqual(plain(h.titleState(named,{'flixtor:movie:50':{watched:false,source:'manual'}},names)),{watched:false,source:'manual'},'own "not watched" beats a name match');
+ assert.deepEqual(plain(h.titleState(Object.assign({resume:done},named),map,names)),{watched:true,source:'amazon'},'a name match ranks above native completion');
+ for(const bad of [null,[],'x',{amazon:'movie|namedfilm|2020'},{amazon:{'movie|namedfilm|2020':true}},{elsewhere:['movie|namedfilm|2020']}])assert.deepEqual(plain(h.titleState(named,map,bad)),{watched:false,source:'none'});
+ // Episode facts for a series: by catalogue id first; an import layer known only by name fills in below the profile's own facts.
+ const series={url:'https://flixtor.to/watch/tv/60/named-show',title:'Named Show',year:'2018'},byName={netflix:{'tv|namedshow|2018':{1:[1,2]}},amazon:{'tv|othershow|2018':{1:[9]}}};
+ assert.equal(h.episodeFacts(series,{},{}),null);assert.equal(h.episodeFacts(named,{},byName),null,'films have no episode facts');
+ assert.deepEqual(plain(h.episodeFacts(series,{},byName)),{completedSeasons:[],completedThrough:null,episodes:{},imported:{netflix:{1:[1,2]}}});
+ const own={completedSeasons:[3],completedThrough:null,episodes:{'1:1':{watched:false}},source:'explicit_user'},ownSnapshot=JSON.stringify(own);
+ const merged=h.episodeFacts(series,{'flixtor:tv:60':own},byName);assert.deepEqual(plain(merged),Object.assign({},own,{imported:{netflix:{1:[1,2]}}}));assert.equal(JSON.stringify(own),ownSnapshot,'the profile\'s own facts are not modified');
+ assert.deepEqual(plain(h.episodeState(null,1,1,merged)),{watched:false,source:'manual'});assert.deepEqual(plain(h.episodeState(null,1,2,merged)),{watched:true,source:'netflix'});assert.deepEqual(plain(h.episodeState(null,3,7,merged)),{watched:true,source:'manual'});
+ const held={imported:{amazon:{2:[5]}}};assert.equal(h.episodeFacts(series,{'flixtor:tv:60':held},byName),held,'the id-keyed import layer is the answer once the catalogue holds the series');
+ assert.equal(h.episodeFacts(series,{'flixtor:tv:60':own},{netflix:{'tv|namedshow|2019':{1:[1]}},constructor:{}}),own);
+ console.log('PASS: title watched precedence (service map, then name match, then native movie completion), shared name-key cases, episode facts by id or name, source wording and invalid entries.');}
 console.log('PASS: real native progress parsing, most recent episode, completion, invalid data, movie/series separation, season boundary and finale.');
 // Deterministic native-selection harness: no real playback or household state.
 function nextHarness(){
@@ -90,6 +123,18 @@ assert.equal(h.nextUnwatched([null,{season:0,number:1},{season:1,number:0}],{}),
 assert.equal(JSON.stringify(orderedCandidates),candidatesSnapshot);assert.equal(JSON.stringify(nativeComplete),nativeSnapshot);assert.equal(JSON.stringify(completionFacts),factsSnapshot);
 assert.deepEqual(Object.keys(state(null,1,1,completionFacts)).sort(),['source','watched']);
 assert.deepEqual(state(null,1,1,{}),{watched:false,source:'none'},'completion facts for one profile do not bleed into another');
+// Imported episode completion sits between the profile's own facts and native completion.
+{const imported={netflix:{2:[17,18]},amazon:{2:[18],5:[1]}},facts={episodes:{'2:17':{watched:false}},imported};
+ assert.deepEqual(state(null,2,18,facts),{watched:true,source:'netflix'},'services are read in one fixed order');
+ assert.deepEqual(state(null,5,1,facts),{watched:true,source:'amazon'});
+ assert.deepEqual(state(nativeComplete,2,18,facts),{watched:true,source:'netflix'},'import ranks above native completion');
+ assert.deepEqual(state(null,2,17,facts),{watched:false,source:'manual'},'own "not watched" beats an import');
+ assert.deepEqual(state(null,2,18,{completedSeasons:[2],imported}),{watched:true,source:'manual'},'own completed season is reported as the profile\'s own');
+ assert.deepEqual(state(null,2,19,facts),{watched:false,source:'none'});assert.deepEqual(state(null,3,18,facts),{watched:false,source:'none'},'another season cannot borrow an episode number');
+ for(const bad of [null,'netflix',[],{netflix:null},{netflix:{2:'18'}},{netflix:{2:{18:true}}},{netflix:{2:['18']}},{elsewhere:{2:[18]}}])assert.deepEqual(state(null,2,18,{imported:bad}),{watched:false,source:'none'});
+ const list=[{season:2,number:17},{season:2,number:18},{season:2,number:19}];
+ assert.equal(h.nextUnwatched(list,{imported:{netflix:{2:[17,18]}}}),list[2],'next episode continues after what was finished on a service');assert.equal(h.nextUnwatched(list,facts),list[0]);
+ console.log('PASS: imported episode completion (precedence below own facts and above native, fixed service order, invalid shapes, next unwatched).');}
 console.log('PASS: profile episode facts, explicit unwatched precedence, native completion identity, invalid facts, first available unwatched, no mutation and no fabricated playback positions.');
 
 {const special=h.parse('pos:42:0:1','1200:1200:1000');assert.equal(special.type,'tv');assert.equal(h.label(special),'S0 · E1 · Watched');assert.equal(h.parse('pos:42','1200:1200:1000').type,'movie');}

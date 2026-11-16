@@ -15,9 +15,11 @@ class NetflixImportTests(unittest.TestCase):
             root=Path(temp);archive=root/'export.zip'
             def csv_text(rows):
                 buf=io.StringIO();w=csv.DictWriter(buf,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows);return buf.getvalue()
-            def view(name,title,kind=''):
-                return {'Profile Name':name,'Title':title,'Start Time':'2026-01-01 12:00:00','Duration':'00:30:00','Supplemental Video Type':kind,'Bookmark':'00:30:00','Latest Bookmark':'00:30:00'}
-            views=[view('Alice','Example Show: Season 2: Episode 14'),view('Alice','Example Show: Season 2: Episode 14'),view('Bob','Other Film'),view('Alice','Other Film','TRAILER'),view('Unknown','Other Film')]
+            def view(name,title,kind='',bookmark='00:30:00',start='2026-01-01 12:00:00'):
+                return {'Profile Name':name,'Title':title,'Start Time':start,'Duration':'00:30:00','Supplemental Video Type':kind,'Bookmark':bookmark,'Latest Bookmark':bookmark}
+            views=[view('Alice','Example Show: Season 2: Episode 14'),view('Alice','Example Show: Season 2: Episode 14'),view('Bob','Other Film'),view('Alice','Other Film','TRAILER'),view('Unknown','Other Film'),
+                   view('Alice','Example Show: Season 2: Finale (Episode 15)',bookmark='00:41:00'),view('Alice','Example Show: Season 2: Finale (Episode 15)',bookmark='00:12:00',start='2026-01-02 12:00:00'),
+                   view('Alice','Example Show: Season 3: Opener (Episode 1)',bookmark='00:00:00'),view('Alice','Other Film',bookmark='01:35:00'),view('Alice','Other Film',bookmark='00:20:00',start='2026-01-03 12:00:00')]
             ratings=[{'Profile Name':'Alice','Title Name':'Example Show','Event Utc Ts':'2026-02-01 12:00:00','Rating Type':'thumb','Star Value':'','Thumbs Value':'2'}, {'Profile Name':'Bob','Title Name':'Other Film','Event Utc Ts':'2026-02-01 12:00:00','Rating Type':'star','Star Value':'-2','Thumbs Value':'2'}]
             with zipfile.ZipFile(archive,'w') as z:
                 for filename,rows in [('PROFILES/Profiles.csv',[{'Profile Name':'Alice','Email Address':'private@example.test','Date Of Birth':'private'},{'Profile Name':'Bob','Email Address':'private2@example.test','Date Of Birth':'private'}]),('CONTENT_INTERACTION/ViewingActivity.csv',views),('CONTENT_INTERACTION/Ratings.csv',ratings),('CONTENT_INTERACTION/MyList.csv',[{'Profile Name':'Alice','Title Name':'Other Film','Utc Title Add Date':'2026-02-02 12:00:00'}])]:z.writestr('account/'+filename,csv_text(rows))
@@ -30,7 +32,12 @@ class NetflixImportTests(unittest.TestCase):
             resolver=Resolver(items,metadata);self.assertIsNone(resolver.resolve('Ambiguous','2026-01-01'));self.assertIsNone(resolver.resolve('Missing Film','2026-01-01'))
             reports,_=prepare(db,items,resolver,root/'profiles');db.close()
             alice=json.loads((root/'profiles'/profile_id('Alice')/'matches.json').read_text());bob=json.loads((root/'profiles'/profile_id('Bob')/'matches.json').read_text())
-            self.assertEqual(alice['seen'],['flixtor:tv:1']);self.assertEqual(bob['seen'],[]);self.assertEqual(bob['seeds'],[]);self.assertEqual(next(r for r in reports if r['name']=='Alice')['supplemental_excluded'],1)
+            self.assertEqual(alice['seen'],['flixtor:movie:2','flixtor:tv:1']);self.assertEqual(bob['seen'],[])
+            # Viewing facts: seconds played and the furthest position, per film and per numbered episode. No "finished" flag.
+            viewing={v['item']['id']:v for v in alice['viewing']};film=viewing['flixtor:movie:2'];series=viewing['flixtor:tv:1']
+            self.assertEqual((film['seconds'],film['position'],film['metadata_id'],film['episodes']),(3600,5700,'tt2',[]))
+            self.assertEqual(series['episodes'],[[2,15,3600,2460],[3,1,1800,None]],'furthest position of two plays; 00:00:00 is no position');self.assertIsNone(series['position']);self.assertEqual(series['metadata_id'],'tt1')
+            self.assertNotIn('episodes',alice);self.assertEqual(bob['viewing'],[],'a title the profile marked unwatched is not viewing');self.assertEqual(bob['seeds'],[]);self.assertEqual(next(r for r in reports if r['name']=='Alice')['supplemental_excluded'],1)
             self.assertEqual({r['UserId'] for r in json.loads((root/'profiles'/profile_id('Bob')/'gorse-feedback.json').read_text())},{profile_id('Bob')})
             self.assertTrue(any(r['FeedbackType']=='recommend_unwatched' for r in json.loads((root/'profiles'/profile_id('Bob')/'gorse-feedback.json').read_text())))
 if __name__=='__main__':unittest.main()
