@@ -2,8 +2,9 @@
 import json,re,threading,sqlite3
 from pathlib import Path
 from feedback import FeedbackStore
-from episode_progress import EpisodeProgressStore
+from episode_progress import EpisodeProgressStore,blank
 from recommendation_cache import RecommendationSnapshots
+import watched
 
 class RecommendationProfiles:
     def __init__(self,default_root,directory=None):
@@ -49,6 +50,16 @@ class RecommendationProfiles:
     def with_progress(self,pack,ident):
         try:return dict(pack,episodeProgress=self.progress_store(ident).states())
         except (OSError,ValueError,sqlite3.Error):return dict(pack,episodeProgress={},episodeProgressError='Profile episode progress unavailable')
+    def with_state(self,pack,ident):
+        """Profile facts added fresh to every bundle: the profile's own episode facts, the resolved
+        watched map for titles, and the imported layer of episode state (`imported` beside the
+        profile's own facts for that series; the app ranks it below them)."""
+        pack=self.with_progress(pack,ident)
+        try:found=watched.for_store(self.store(ident),self.default_root.parent/'metadata/title-index.sqlite')
+        except (OSError,ValueError,sqlite3.Error):return dict(pack,watched={})
+        progress=dict(pack['episodeProgress'])
+        for series,imported in found['episodes'].items():progress[series]=dict(progress.get(series) or blank(),imported=imported)
+        return dict(pack,watched=found['titles'],episodeProgress=progress)
     def save(self,payload):
         if not isinstance(payload,dict):raise ValueError('Invalid feedback')
         payload=dict(payload);ident=payload.pop('profileId','household')
@@ -64,9 +75,9 @@ class RecommendationProfiles:
             entries=[e for e in entries if e['id'] in set(scope)]
             if not entries:raise PermissionError('No recommendation profiles are available to this device')
         snapshots=self.snapshots.bundle(entries,self.store,recommend)
-        packs=[dict(self.with_progress(pack,entry['id']),id=entry['id'],name=entry['name']) for entry,pack in zip(entries,snapshots)]
+        packs=[dict(self.with_state(pack,entry['id']),id=entry['id'],name=entry['name']) for entry,pack in zip(entries,snapshots)]
         if scope is not None:return dict(packs[0],profiles=packs)
-        result=self.with_progress(snapshots[0],'household')
+        result=self.with_state(snapshots[0],'household')
         return dict(result,profiles=packs) if len(entries)>1 else result
     def save_scoped(self,payload,scope):
         """Remote feedback: the target profile (default household) must be in the device's scope."""

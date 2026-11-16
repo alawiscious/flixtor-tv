@@ -88,7 +88,7 @@ def main():
     items=catalogue(json.loads(Path(a.catalogue).read_text())); seeds,seen,review=match_history(a.db,items)
     out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
     index=out.parent/'metadata/title-index.sqlite'
-    metadata_report=None;excluded=set()
+    metadata_report=None;excluded=set();viewing=None
     if index.exists():
         feedback_path=out.parent/'metadata/explicit-feedback.json'
         enriched=enrich(a.db,index,items,json.loads(feedback_path.read_text()) if feedback_path.exists() else [])
@@ -99,10 +99,12 @@ def main():
         review.extend({k:r[k] for k in ['source_id','source_title','canonical_id','signal']} for r in enriched['review'])
         write_json(out/'metadata_mapping_review.json',enriched['review'])
         write_json(out/'unresolved_mapping_review.json',enriched['unresolved'])
-        metadata_report=enriched['report']
+        metadata_report=enriched['report'];viewing=enriched['viewing']
     for item in items.values():item['genres']=genre_tags(item['genres'])
     write_json(out/'catalogue.json',items)
-    write_json(out/'matches.json',{'profile':a.profile,'seeds':sorted(seeds.values(),key=lambda r:(r.get('feedback_type')=='like',r['at']),reverse=True),'seen':list(set(seen)|excluded),'review':review,'metadata_coverage':metadata_report})
+    write_json(out/'matches.json',{'profile':a.profile,'seeds':sorted(seeds.values(),key=lambda r:(r.get('feedback_type')=='like',r['at']),reverse=True),'seen':list(set(seen)|excluded),'review':review,'metadata_coverage':metadata_report,
+        # Viewing facts (seconds, furthest position, episodes) for watched.py. Without the metadata index there are none to state.
+        **({'viewing':viewing} if viewing is not None else {})})
     with (out/'canonical_mapping_review.csv').open('w') as f:
         w=csv.DictWriter(f,fieldnames=['source_id','source_title','canonical_id','signal']);w.writeheader();w.writerows(review)
     conn=sqlite3.connect(a.db)
