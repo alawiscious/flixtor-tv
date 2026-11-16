@@ -98,8 +98,10 @@ class ResolveTests(unittest.TestCase):
         found=self.assess([view(show('history:imdb:tt4','Long Show'),0,episodes=[(1,1,0,40*60)])])
         self.assertEqual(found['episodes'],{},'40 of 60 minutes, although it passes the usual 45')
     def test_episodes_without_any_length_or_catalogue_series_are_counted_not_decided(self):
-        found=self.assess([view(show('history:imdb:tt8','No Usual Length'),0,episodes=[(1,1,9999,9999)]),view(show('history:imdb:tt99','Elsewhere'),0,episodes=[(1,1,9999,9999),(1,2,9999,9999)])],profile='ftv-amazon-import')
-        self.assertEqual(found['episodes'],{});self.assertEqual(found['report']['episodes length unknown'],1);self.assertEqual(found['report']['episodes of series not in catalogue'],2);self.assertEqual(found['source'],'amazon')
+        found=self.assess([view(show('history:imdb:tt8','No Usual Length'),0,episodes=[(1,1,9999,9999)]),view(show('history:imdb:tt99','Elsewhere'),0,episodes=[(1,1,9999,9999),(1,2,9999,9999)]),
+                           view(show('history:imdb:tt4','Yearless','') ,0,episodes=[(1,1,9999,9999)])],profile='ftv-amazon-import')
+        self.assertEqual(found['episodes'],{});self.assertEqual(found['named_episodes'],{});self.assertEqual(found['report']['episodes length unknown'],3,'one catalogue series and one named series, neither with a length on record')
+        self.assertEqual(found['report']['episodes of series not in catalogue'],3);self.assertEqual(found['report']['episodes of series with no usable name'],1);self.assertEqual(found['source'],'amazon')
     def test_malformed_viewing_rows_are_ignored(self):
         rows=[None,{'item':None},{'item':{'type':'short'}},dict(item=show('history:imdb:tt4','Long Show'),seconds='x',episodes=[[1],[0,1,5,5],['1',1,5,5],[1,2,True,9999]])]
         found=self.assess(rows);self.assertEqual(found['episodes'],{'flixtor:tv:4':{(1,2):'position'}});self.assertEqual(found['report']['episodes'],1)
@@ -107,14 +109,42 @@ class ResolveTests(unittest.TestCase):
         report=self.assess([view(movie('history:imdb:tt1','Finished Film'),0,90*60),view(movie('history:imdb:tt2','Half Film'),0,10*60),view(movie('history:imdb:tt5','No Runtime'),9999,9999),view(movie('history:imdb:tt3','Unlisted Film'),90*60)])['report']
         self.assertEqual((report['films'],report['films finished by position'],report['films not finished'],report['films length unknown'],report['films finished by duration'],report['films finished, not in catalogue']),(4,1,1,1,1,1))
 
+    # Finished titles the catalogue does not hold yet are published by name.
+    NAME_CASES=[(('movie','Am\u00e9lie','2001'),'movie|amelie|2001'),(('tv','Se7en: The  Beginning!',2019),'tv|se7enthebeginning|2019'),(('movie','Stra\u00dfe','1999'),'movie|strae|1999'),
+                (('movie','Film','2020 \u00b7 1h 30m'),'movie|film|2020'),(('movie','Film',''),None),(('movie','!!!','2020'),None),(('short','Film','2020'),None),(('movie','Film','0000'),None)]
+    def test_name_key_cases_shared_with_the_app(self):
+        for (kind,title,year),expected in self.NAME_CASES:self.assertEqual(watched.name_key(dict(type=kind,title=title,year=year)),expected,(kind,title,year))
+    def test_finished_titles_outside_the_catalogue_are_offered_by_name(self):
+        self.index.unlink();index(self.index,[('tt20','movie','Unlisted Film',2019,100,''),('tt21','tvSeries','Unlisted Show',2018,30,''),('tt22','movie','Unfinished Film',2019,100,''),('tt1','movie','Finished Film',2020,100,'')])
+        viewing=[view(movie('history:imdb:tt20','Unlisted Film','2019'),0,90*60),view(show('history:imdb:tt21','Unlisted Show','2018'),0,episodes=[(1,2,0,29*60),(1,1,1800,None),(2,1,60,5*60)]),
+                 view(movie('history:imdb:tt22','Unfinished Film','2019'),0,10*60),view(movie('history:imdb:tt1','Finished Film'),0,90*60)]
+        found=self.assess(viewing)
+        self.assertEqual(found['named_titles'],{'movie|unlistedfilm|2019':'position'});self.assertEqual(found['named_episodes'],{'tv|unlistedshow|2018':{(1,1):'duration',(1,2):'position'}})
+        self.assertEqual(found['titles'],{'flixtor:movie:1':'position'},'a title the catalogue holds stays in the id map and is not offered by name as well')
+        self.assertEqual(watched.named(found),({'netflix':['movie|unlistedfilm|2019']},{'netflix':{'tv|unlistedshow|2018':{'1':[1,2]}}}))
+        self.assertEqual((found['report']['films finished, offered by name'],found['report']['episodes finished, offered by name']),(1,2))
+        # Once the catalogue learns the title, it moves to the id map and leaves the name map.
+        self.catalogue['flixtor:movie:20']=movie('flixtor:movie:20','Unlisted Film','2019');self.catalogue['flixtor:tv:21']=show('flixtor:tv:21','Unlisted Show','2018')
+        found=self.assess(viewing);self.assertEqual(found['named_titles'],{});self.assertEqual(found['named_episodes'],{})
+        self.assertEqual(found['titles']['flixtor:movie:20'],'position');self.assertEqual(set(found['episodes']['flixtor:tv:21']),{(1,1),(1,2)})
+    def test_a_name_is_offered_only_when_unambiguous(self):
+        self.index.unlink();index(self.index,[('tt6','movie','Twin',2020,100,''),('tt7','movie','Twin',2020,100,''),('tt30','movie','Remade',2020,100,''),('tt31','movie','Remade',2020,100,''),('tt32','movie','No Year',None,100,'')])
+        twins=[view(movie('history:imdb:tt30','Remade'),0,6000),view(movie('history:imdb:tt31','Remade'),0,6000)]
+        self.assertEqual(self.assess(twins)['named_titles'],{},'two viewed titles of one name')
+        self.assertEqual(self.assess(twins[:1])['named_titles'],{'movie|remade|2020':'position'})
+        self.assertEqual(self.assess([view(movie('history:imdb:tt32','No Year',''),0,6000)])['named_titles'],{},'no year, no name')
+        self.catalogue['flixtor:movie:7']=movie('flixtor:movie:7','Twin')
+        found=self.assess([view(movie('history:imdb:tt6','Twin'),0,6000)]);self.assertEqual((found['titles'],found['named_titles']),({},{}),'two catalogue titles of that name: neither map answers')
+        self.assertEqual(watched.named(found),({},{}))
+
 class BundleTests(unittest.TestCase):
     def test_bundle_carries_each_profiles_own_watched_map_and_imported_episodes(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);default=root/'amazon/personalized';directory=root/'netflix/profiles';default.mkdir(parents=True);directory.mkdir(parents=True);(root/'amazon/metadata').mkdir()
-            index(root/'amazon/metadata/title-index.sqlite',[('tt1','movie','Finished Film',2020,100,''),('tt4','tvSeries','Long Show',2020,45,'')])
+            index(root/'amazon/metadata/title-index.sqlite',[('tt1','movie','Finished Film',2020,100,''),('tt4','tvSeries','Long Show',2020,45,''),('tt20','movie','Unlisted Film',2019,100,'')])
             catalogue={'flixtor:movie:1':movie('flixtor:movie:1','Finished Film'),'flixtor:movie:2':movie('flixtor:movie:2','Other Film'),'flixtor:tv:4':show('flixtor:tv:4','Long Show'),'flixtor:tv:5':show('flixtor:tv:5','Own Show')}
             (default/'catalogue.json').write_text(json.dumps(catalogue));(default/'matches.json').write_text(json.dumps({'profile':'ftv-amazon-import','seeds':[]}))
-            viewing=[view(movie('history:imdb:tt1','Finished Film'),6000,95*60),view(catalogue['flixtor:tv:4'],0,episodes=[(1,1,2700,2700),(1,2,300,300)],metadata_id='tt4')]
+            viewing=[view(movie('history:imdb:tt1','Finished Film'),6000,95*60),view(catalogue['flixtor:tv:4'],0,episodes=[(1,1,2700,2700),(1,2,300,300)],metadata_id='tt4'),view(movie('history:imdb:tt20','Unlisted Film','2019'),0,95*60)]
             (directory/NETFLIX).mkdir();(directory/NETFLIX/'matches.json').write_text(json.dumps({'profile':NETFLIX,'seeds':[],'viewing':viewing}))
             (directory/'profiles.json').write_text(json.dumps({'profiles':[{'id':NETFLIX,'name':'Example'}]}))
             registry=RecommendationProfiles(default,directory)
@@ -126,6 +156,7 @@ class BundleTests(unittest.TestCase):
             packs={p['id']:p for p in result['profiles']}
             self.assertEqual(packs['household']['watched'],result['watched'])
             self.assertEqual(packs[NETFLIX]['watched'],{'flixtor:movie:1':netflix('position')})
+            self.assertEqual((packs[NETFLIX]['watchedNames'],packs[NETFLIX]['importedEpisodeNames'],result['watchedNames'],result['importedEpisodeNames']),({'netflix':['movie|unlistedfilm|2019']},{},{},{}))
             progress=packs[NETFLIX]['episodeProgress']
             # The import layer sits beside the profile's own facts for the series; it never rewrites them.
             self.assertEqual(progress['flixtor:tv:4']['imported'],{'netflix':{'1':[1]}});self.assertEqual(progress['flixtor:tv:4']['episodes'],{'1:1':{'watched':False}})
@@ -133,6 +164,20 @@ class BundleTests(unittest.TestCase):
             self.assertEqual(registry.progress_store(NETFLIX).states()['flixtor:tv:4'].get('imported'),None,'imports are never written into the profile\'s own store')
             scoped=registry.bundle(lambda *_:{'engine':'gorse','items':[]},scope=[NETFLIX])
             self.assertEqual(scoped['watched'],packs[NETFLIX]['watched']);self.assertEqual(scoped['episodeProgress'],progress);self.assertEqual([p['id'] for p in scoped['profiles']],[NETFLIX])
+    def test_assessment_is_redone_only_when_an_input_file_changes(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);default=root/'amazon/personalized';default.mkdir(parents=True);(root/'amazon/metadata').mkdir()
+            index(root/'amazon/metadata/title-index.sqlite',[('tt1','movie','Finished Film',2020,100,'')])
+            catalogue={'flixtor:movie:1':movie('flixtor:movie:1','Finished Film'),'flixtor:movie:2':movie('flixtor:movie:2','Other Film')};(default/'catalogue.json').write_text(json.dumps(catalogue))
+            write=lambda position:(default/'matches.json').write_text(json.dumps({'profile':'ftv-amazon-import','seeds':[],'viewing':[view(movie('history:imdb:tt1','Finished Film'),0,position)]}))
+            write(95*60);registry=RecommendationProfiles(default,root/'none');bundle=lambda:registry.bundle(lambda *_:{'engine':'gorse','items':[]})['watched']
+            with patch('watched.assess',wraps=watched.assess) as assess:
+                self.assertEqual(set(bundle()),{'flixtor:movie:1'});self.assertEqual(set(bundle()),{'flixtor:movie:1'});self.assertEqual(assess.call_count,1)
+                # The profile's own choice is never kept: it shows at once, without a new assessment.
+                with patch('feedback.gorse',return_value={}):registry.save({'profileId':'household','itemId':'flixtor:movie:2','watched':True})
+                self.assertEqual(set(bundle()),{'flixtor:movie:1','flixtor:movie:2'});self.assertEqual(assess.call_count,1)
+                write(1000*60+1);self.assertEqual(set(bundle()),{'flixtor:movie:1','flixtor:movie:2'});self.assertEqual(assess.call_count,2)
+                write(10*60);self.assertEqual(set(bundle()),{'flixtor:movie:2'},'a changed matches file is assessed again');self.assertEqual(assess.call_count,3)
     def test_series_with_imports_only_gets_blank_own_facts(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);default=root/'amazon/personalized';default.mkdir(parents=True);(root/'amazon/metadata').mkdir()

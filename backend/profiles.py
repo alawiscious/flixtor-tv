@@ -52,14 +52,15 @@ class RecommendationProfiles:
         except (OSError,ValueError,sqlite3.Error):return dict(pack,episodeProgress={},episodeProgressError='Profile episode progress unavailable')
     def with_state(self,pack,ident):
         """Profile facts added fresh to every bundle: the profile's own episode facts, the resolved
-        watched map for titles, and the imported layer of episode state (`imported` beside the
-        profile's own facts for that series; the app ranks it below them)."""
+        watched map for titles, the imported layer of episode state (`imported` beside the
+        profile's own facts for that series; the app ranks it below them), and the same two import
+        layers by name for finished titles the catalogue does not hold yet."""
         pack=self.with_progress(pack,ident)
         try:found=watched.for_store(self.store(ident),self.default_root.parent/'metadata/title-index.sqlite')
-        except (OSError,ValueError,sqlite3.Error):return dict(pack,watched={})
+        except (OSError,ValueError,sqlite3.Error):return dict(pack,watched={},watchedNames={},importedEpisodeNames={})
         progress=dict(pack['episodeProgress'])
         for series,imported in found['episodes'].items():progress[series]=dict(progress.get(series) or blank(),imported=imported)
-        return dict(pack,watched=found['titles'],episodeProgress=progress)
+        return dict(pack,watched=found['titles'],episodeProgress=progress,watchedNames=found['named_titles'],importedEpisodeNames=found['named_episodes'])
     def save(self,payload):
         if not isinstance(payload,dict):raise ValueError('Invalid feedback')
         payload=dict(payload);ident=payload.pop('profileId','household')

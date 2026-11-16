@@ -18,7 +18,28 @@ const nextSource=fs.readFileSync('src/next-episode.js','utf8');assert(!/\.ended\
  assert.equal(h.titleLabel({watched:true,source:'amazon'}),'Watched on Prime Video');assert.equal(h.titleLabel({watched:true,source:'manual'}),'Marked as watched');
  for(const bad of [null,undefined,{},{url:'https://example.com/x'}])assert.deepEqual(plain(h.titleState(bad,map)),{watched:false,source:'none'});
  assert.deepEqual(plain(h.titleState(film,null)),{watched:false,source:'none'});assert.equal(h.titleLabel(null),'');
- console.log('PASS: title watched precedence (service map, then native movie completion), source wording and invalid entries.');}
+ // Finished titles the service only knows by name (same cases as backend/test_watched.py NAME_CASES).
+ const url=kind=>kind==='short'?'https://flixtor.to/short/1':'https://flixtor.to/watch/'+kind+'/1/x';
+ for(const [[kind,title,year],expected] of [[['movie','Am\u00e9lie','2001'],'movie|amelie|2001'],[['tv','Se7en: The  Beginning!',2019],'tv|se7enthebeginning|2019'],[['movie','Stra\u00dfe','1999'],'movie|strae|1999'],
+   [['movie','Film','2020 \u00b7 1h 30m'],'movie|film|2020'],[['movie','Film',''],null],[['movie','!!!','2020'],null],[['short','Film','2020'],null],[['movie','Film','0000'],null]])assert.equal(h.nameKey({url:url(kind),title,year}),expected||'',JSON.stringify([kind,title,year]));
+ assert.equal(h.nameKey(null),'');
+ const named={url:'https://flixtor.to/watch/movie/50/named',title:'Named Film',year:'2020'},names={netflix:['movie|other|2020'],amazon:['movie|namedfilm|2020']};
+ assert.deepEqual(plain(h.titleState(named,map,names)),{watched:true,source:'amazon'});assert.equal(h.titleLabel(h.titleState(named,map,names)),'Watched on Prime Video');
+ assert.deepEqual(plain(h.titleState(Object.assign({},named,{year:'2021'}),map,names)),{watched:false,source:'none'},'another year is another title');
+ assert.deepEqual(plain(h.titleState(Object.assign({},named,{url:'https://flixtor.to/watch/tv/50/named'}),map,names)),{watched:false,source:'none'},'a series of the same name is another title');
+ assert.deepEqual(plain(h.titleState(named,{'flixtor:movie:50':{watched:false,source:'manual'}},names)),{watched:false,source:'manual'},'own "not watched" beats a name match');
+ assert.deepEqual(plain(h.titleState(Object.assign({resume:done},named),map,names)),{watched:true,source:'amazon'},'a name match ranks above native completion');
+ for(const bad of [null,[],'x',{amazon:'movie|namedfilm|2020'},{amazon:{'movie|namedfilm|2020':true}},{elsewhere:['movie|namedfilm|2020']}])assert.deepEqual(plain(h.titleState(named,map,bad)),{watched:false,source:'none'});
+ // Episode facts for a series: by catalogue id first; an import layer known only by name fills in below the profile's own facts.
+ const series={url:'https://flixtor.to/watch/tv/60/named-show',title:'Named Show',year:'2018'},byName={netflix:{'tv|namedshow|2018':{1:[1,2]}},amazon:{'tv|othershow|2018':{1:[9]}}};
+ assert.equal(h.episodeFacts(series,{},{}),null);assert.equal(h.episodeFacts(named,{},byName),null,'films have no episode facts');
+ assert.deepEqual(plain(h.episodeFacts(series,{},byName)),{completedSeasons:[],completedThrough:null,episodes:{},imported:{netflix:{1:[1,2]}}});
+ const own={completedSeasons:[3],completedThrough:null,episodes:{'1:1':{watched:false}},source:'explicit_user'},ownSnapshot=JSON.stringify(own);
+ const merged=h.episodeFacts(series,{'flixtor:tv:60':own},byName);assert.deepEqual(plain(merged),Object.assign({},own,{imported:{netflix:{1:[1,2]}}}));assert.equal(JSON.stringify(own),ownSnapshot,'the profile\'s own facts are not modified');
+ assert.deepEqual(plain(h.episodeState(null,1,1,merged)),{watched:false,source:'manual'});assert.deepEqual(plain(h.episodeState(null,1,2,merged)),{watched:true,source:'netflix'});assert.deepEqual(plain(h.episodeState(null,3,7,merged)),{watched:true,source:'manual'});
+ const held={imported:{amazon:{2:[5]}}};assert.equal(h.episodeFacts(series,{'flixtor:tv:60':held},byName),held,'the id-keyed import layer is the answer once the catalogue holds the series');
+ assert.equal(h.episodeFacts(series,{'flixtor:tv:60':own},{netflix:{'tv|namedshow|2019':{1:[1]}},constructor:{}}),own);
+ console.log('PASS: title watched precedence (service map, then name match, then native movie completion), shared name-key cases, episode facts by id or name, source wording and invalid entries.');}
 console.log('PASS: real native progress parsing, most recent episode, completion, invalid data, movie/series separation, season boundary and finale.');
 // Deterministic native-selection harness: no real playback or household state.
 function nextHarness(){

@@ -25,15 +25,36 @@ var FTV_HISTORY=(function(){
     if(nativeRecord&&nativeRecord.season===season&&nativeRecord.number===number&&nativeRecord.complete===true)return {watched:true,source:'native'};
     return {watched:false,source:'none'};
   }
+  // How a title is named when the service has no catalogue id for it yet: type|title|year, or ''.
+  // Must stay equal to name_key() in backend/watched.py; both tests share cases.
+  function nameKey(item){
+    var m=(item&&item.url||'').match(/\/watch\/(tv|movie)\//),title=String(item&&item.title||''),year=/(?:19|20)\d{2}/.exec(String(item&&item.year||''));
+    try{title=title.normalize('NFKD');}catch(_){}
+    title=title.toLowerCase().replace(/[^a-z0-9]/g,'');return m&&title&&year?m[1]+'|'+title+'|'+year[0]:'';
+  }
+  // Episode facts for one series, resolved here and nowhere else in the app: the service's facts for
+  // its catalogue id; when those hold no import layer, the one the service published by name.
+  function episodeFacts(item,titles,names){
+    var m=(item&&item.url||'').match(/\/watch\/tv\/(\d+)/);if(!m)return null;
+    var facts=titles&&typeof titles==='object'?titles['flixtor:tv:'+m[1]]:null;facts=facts&&typeof facts==='object'?facts:null;
+    if(facts&&facts.imported)return facts;
+    var key=nameKey(item),imported=null;
+    if(key&&names&&typeof names==='object')IMPORT_SOURCES.forEach(function(service){var held=names[service],seasons=held&&typeof held==='object'&&Object.prototype.hasOwnProperty.call(held,key)?held[key]:null;if(seasons&&typeof seasons==='object'){imported=imported||{};imported[service]=seasons;}});
+    if(!imported)return facts;
+    var out={completedSeasons:[],completedThrough:null,episodes:{}};if(facts)Object.keys(facts).forEach(function(k){out[k]=facts[k];});out.imported=imported;return out;
+  }
   // Title-level watched state, resolved here and nowhere else in the app. Explicit precedence:
   //   1. the service's resolved map (the profile's own choice, then mostly-finished streaming imports)
-  //   2. FlixTor's own completed movie position on this TV
+  //   2. names: finished imports the service published by name, for titles its catalogue does not hold yet
+  //   3. FlixTor's own completed movie position on this TV
   // A series is never called watched from one finished episode.
   var TITLE_SOURCES={manual:'Marked as watched',netflix:'Watched on Netflix',amazon:'Watched on Prime Video',native:'Watched on FlixTor'};
-  function titleState(item,map){
+  function titleState(item,map,names){
     var m=(item&&item.url||'').match(/\/watch\/(tv|movie)\/(\d+)/);if(!m)return {watched:false,source:'none'};
     var entry=map&&typeof map==='object'?map['flixtor:'+m[1]+':'+m[2]]:null;
     if(entry&&typeof entry==='object'&&typeof entry.watched==='boolean'&&['manual','netflix','amazon'].indexOf(entry.source)!==-1)return {watched:entry.watched,source:entry.source};
+    var key=names&&typeof names==='object'?nameKey(item):'';
+    if(key)for(var i=0;i<IMPORT_SOURCES.length;i++){var listed=names[IMPORT_SOURCES[i]];if(Array.isArray(listed)&&listed.indexOf(key)!==-1)return {watched:true,source:IMPORT_SOURCES[i]};}
     if(m[1]==='movie'&&item.resume&&item.resume.complete===true)return {watched:true,source:'native'};
     return {watched:false,source:'none'};
   }
@@ -45,5 +66,5 @@ var FTV_HISTORY=(function(){
     return null;
   }
   function loadWatching(done){var finished=false,timer=setTimeout(finish,4000);function finish(root){if(finished)return;finished=true;clearTimeout(timer);done(root||null);}function load(){try{if(typeof window.getLclsIDs!=='function'||!window.jQuery){finish();return;}window.jQuery.ajax({url:'/mylists/watched?ajax=1',type:'post',contentType:'application/json',data:window.getLclsIDs(),dataType:'html',timeout:3000,success:function(html){finish(new DOMParser().parseFromString(html,'text/html'));},error:function(){finish();}});}catch(_){finish();}}if(typeof window.hqsSyncReady==='function')window.hqsSyncReady(load);else load();}
-  return {parse:parse,records:records,latest:latest,decorate:decorate,decorateAll:decorateAll,label:label,next:next,episodeState:episodeState,titleState:titleState,titleLabel:titleLabel,nextUnwatched:nextUnwatched,loadWatching:loadWatching};
+  return {parse:parse,records:records,latest:latest,decorate:decorate,decorateAll:decorateAll,label:label,next:next,episodeState:episodeState,episodeFacts:episodeFacts,nameKey:nameKey,titleState:titleState,titleLabel:titleLabel,nextUnwatched:nextUnwatched,loadWatching:loadWatching};
 }());

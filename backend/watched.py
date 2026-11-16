@@ -3,9 +3,16 @@
 Data model. The importers record facts only, in each profile's matches.json under `viewing`:
 which title, its IMDb id, seconds played, the furthest playback position the export states, and
 for a series the same per episode. Nothing there says "finished". `assess()` turns those facts
-into the two maps every reader uses, and nobody else recomputes them:
+into the maps every reader uses, and nobody else recomputes them:
   titles    {catalogue id: {'watched': bool, 'source': SOURCE[, 'evidence': EVIDENCE]}}   (resolve())
   episodes  {catalogue series id: {SERVICE: {season: [episode, ...]}}}   finished episodes only
+The catalogue holds only titles the TV has browsed so far. Finished titles it does not hold yet
+are published by name instead (name_key(): type|title|year), so the TV can show them the first
+time it meets them; once the catalogue learns such a title it moves to the maps above:
+  named_titles    {SERVICE: [name key, ...]}
+  named_episodes  {SERVICE: {name key: {season: [episode, ...]}}}
+A name is offered only when it is unambiguous: a four-digit year, one viewed title of that name
+for the profile, and no catalogue title of that name (so the two kinds of map never overlap).
 FlixTor's own playback position lives only on the TV, so the app layers it below these maps in
 its `titleState()` / `episodeState()` functions.
 
@@ -23,7 +30,7 @@ against the series' usual episode runtime (see LENGTHS). Unknown length means no
 A series title is never called watched from imported episodes; that needs a rule of its own.
 An import can only say something was watched, never that it was not.
 """
-import collections,json,re,sqlite3
+import collections,json,re,sqlite3,threading,unicodedata
 from pathlib import Path
 from history_index import norm
 
@@ -45,6 +52,13 @@ def service(profile):
 
 def key(item):
     return norm(str(item.get('title') or '')),item.get('type'),str(item.get('year') or '')
+
+
+def name_key(item):
+    """How a title is named when there is no catalogue id for it: type|title|year, or None.
+    Must stay equal to FTV_HISTORY.nameKey in the app (src/watch-history.js); both tests share cases."""
+    title=re.sub('[^a-z0-9]','',unicodedata.normalize('NFKD',str(item.get('title') or '')).lower());year=re.search(r'(?:19|20)\d{2}',str(item.get('year') or ''))
+    return item['type']+'|'+title+'|'+year[0] if title and year and item.get('type') in {'movie','tv'} else None
 
 
 def number(value):
@@ -108,6 +122,7 @@ def finished(position,seconds,length):
 def assess(matches,catalogue,features,index):
     """Every imported "mostly finished" decision for one profile, with what it rested on.
     Returns dict(source, titles={catalogue id: evidence}, episodes={catalogue series id: {(season, episode): evidence}},
+    named_titles / named_episodes = the same keyed by name_key() for titles the catalogue does not hold,
     report=counts of what was decided, by which evidence and length, and what could not be)."""
     rows=viewings(matches);report=collections.Counter()
     # A history-only title joins the catalogue on title, type and year, and only when that is
@@ -124,9 +139,12 @@ def assess(matches,catalogue,features,index):
             k=key(item)
             ident=None if k in ambiguous or shared[k]!=1 else by_key.get(k)
         return ident if ident and CATALOGUE_ID.fullmatch(ident) and catalogue[ident].get('type',item['type'])==item['type'] else None
-    for row in rows:row['imdb']=metadata_id(row['item'],features,row['metadata_id']);row['place']=place(row['item'])
-    films,shows=lengths(index,[r['imdb'] for r in rows if r['item']['type']=='movie'],[r['imdb'] for r in rows if r['item']['type']=='tv' and r['place'] and r['episodes']])
-    titles={};episodes={}
+    held={name_key(item) for item in catalogue.values() if isinstance(item,dict)};named=collections.Counter(name_key(r['item']) for r in rows)
+    for row in rows:
+        row['imdb']=metadata_id(row['item'],features,row['metadata_id']);row['place']=place(row['item']);name=name_key(row['item'])
+        row['name']=name if name and not row['place'] and name not in held and named[name]==1 else None
+    films,shows=lengths(index,[r['imdb'] for r in rows if r['item']['type']=='movie'],[r['imdb'] for r in rows if r['item']['type']=='tv' and (r['place'] or r['name']) and r['episodes']])
+    titles={};episodes={};named_titles={};named_episodes={}
     for row in rows:
         if row['item']['type']=='movie':
             report['films']+=1;length=films.get(row['imdb'])
@@ -134,12 +152,14 @@ def assess(matches,catalogue,features,index):
             evidence=finished(row['position'],row['seconds'],length)
             if not evidence:report['films not finished']+=1;continue
             report['films finished by '+evidence]+=1
-            if row['place']:titles[row['place']]=evidence
-            else:report['films finished, not in catalogue']+=1
+            if row['place']:titles[row['place']]=evidence;continue
+            report['films finished, not in catalogue']+=1
+            if row['name']:named_titles[row['name']]=evidence;report['films finished, offered by name']+=1
             continue
         report['episodes']+=len(row['episodes'])
         if not row['episodes']:continue
-        if not row['place']:report['episodes of series not in catalogue']+=len(row['episodes']);continue
+        if not row['place']:report['episodes of series not in catalogue']+=len(row['episodes'])
+        if not (row['place'] or row['name']):report['episodes of series with no usable name']+=len(row['episodes']);continue
         known=shows.get(row['imdb'],{})
         for season,episode,seconds,position in row['episodes']:
             length=known.get((season,episode));basis='episode'
@@ -148,8 +168,9 @@ def assess(matches,catalogue,features,index):
             evidence=finished(position,seconds,length)
             if not evidence:report['episodes not finished']+=1;continue
             report['episodes finished by '+evidence]+=1;report['episodes measured against '+basis+' length']+=1
-            episodes.setdefault(row['place'],{})[(season,episode)]=evidence
-    return dict(source=service(matches.get('profile')),titles=titles,episodes=episodes,report=dict(report))
+            if row['place']:episodes.setdefault(row['place'],{})[(season,episode)]=evidence
+            else:named_episodes.setdefault(row['name'],{})[(season,episode)]=evidence;report['episodes finished, offered by name']+=1
+    return dict(source=service(matches.get('profile')),titles=titles,episodes=episodes,named_titles=named_titles,named_episodes=named_episodes,report=dict(report))
 
 
 def resolve(states,matches,catalogue,features,index,assessed=None):
@@ -163,24 +184,49 @@ def resolve(states,matches,catalogue,features,index,assessed=None):
     return out
 
 
+def by_season(found):
+    seasons=collections.defaultdict(list)
+    for season,episode in sorted(found):seasons[season].append(episode)
+    return {str(season):numbers for season,numbers in seasons.items()}
+
+
 def imported_episodes(assessed):
     """The import layer of episode state: {catalogue series id: {SERVICE: {season: [episode, ...]}}}.
     The profile's own episode facts are kept apart (EpisodeProgressStore) and rank above this."""
-    out={}
-    for ident,found in assessed['episodes'].items():
-        seasons=collections.defaultdict(list)
-        for season,episode in sorted(found):seasons[season].append(episode)
-        out[ident]={assessed['source']:{str(season):numbers for season,numbers in seasons.items()}}
-    return out
+    return {ident:{assessed['source']:by_season(found)} for ident,found in assessed['episodes'].items()}
+
+
+def named(assessed):
+    """The import layers for titles the catalogue does not hold: (named_titles, named_episodes) as described above."""
+    source=assessed['source'];titles=sorted(assessed['named_titles']);episodes={name:by_season(found) for name,found in sorted(assessed['named_episodes'].items())}
+    return ({source:titles} if titles else {}),({source:episodes} if episodes else {})
+
+
+ASSESSED={};ASSESSED_LOCK=threading.Lock()
+
+
+def signature(paths):
+    out=[]
+    for path in paths:
+        try:stat=path.stat();out.append((str(path),stat.st_mtime_ns,stat.st_size))
+        except OSError:out.append((str(path),None,None))
+    return tuple(out)
 
 
 def for_store(store,index):
-    """Both maps for one profile's FeedbackStore (profile root + shared public catalogue root)."""
-    public=store.catalogue_root
-    def read(path,default):
-        try:return json.loads(path.read_text()) if path.exists() else default
-        except (OSError,ValueError):return default
-    catalogue=read(public/'catalogue.json',{});features=read(store.root/'recommendation-features.json',{})
-    if public!=store.root:features.update({k:v for k,v in read(public/'recommendation-features.json',{}).items() if k in catalogue})
-    matches=read(store.root/'matches.json',{});found=assess(matches,catalogue,features,index)
-    return dict(titles=resolve(store.states(),matches,catalogue,features,index,found),episodes=imported_episodes(found))
+    """All four maps for one profile's FeedbackStore (profile root + shared public catalogue root).
+    The import assessment is kept per profile and redone whenever one of the files it is built from
+    changes (catalogue, features, matches, index). The profile's own choices are read fresh every time."""
+    public=store.catalogue_root;index=Path(index)
+    inputs=signature([public/'catalogue.json',store.root/'recommendation-features.json',public/'recommendation-features.json',store.root/'matches.json',index])
+    with ASSESSED_LOCK:kept=ASSESSED.get(str(store.root))
+    if not kept or kept[0]!=inputs:
+        def read(path,default):
+            try:return json.loads(path.read_text()) if path.exists() else default
+            except (OSError,ValueError):return default
+        catalogue=read(public/'catalogue.json',{});features=read(store.root/'recommendation-features.json',{})
+        if public!=store.root:features.update({k:v for k,v in read(public/'recommendation-features.json',{}).items() if k in catalogue})
+        kept=(inputs,assess(read(store.root/'matches.json',{}),catalogue,features,index),frozenset(catalogue))
+        with ASSESSED_LOCK:ASSESSED[str(store.root)]=kept
+    _,found,catalogue=kept;named_titles,named_episodes=named(found)
+    return dict(titles=resolve(store.states(),None,catalogue,None,index,found),episodes=imported_episodes(found),named_titles=named_titles,named_episodes=named_episodes)

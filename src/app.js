@@ -27,14 +27,15 @@
     }else if(location.hostname==='flixtor.to'){episodeContext=JSON.parse(sessionStorage.getItem('ftv.episodeContext.v1')||'null')||episodeContext;}
   }catch(_){}
   // Every reader of a title's watched state goes through here (see FTV_HISTORY.titleState).
-  function watchedState(item){return FTV_HISTORY.titleState(item,episodeContext.watched);}
+  function watchedState(item){return FTV_HISTORY.titleState(item,episodeContext.watched,episodeContext.watchedNames);}
   function titleNavigation(item,mode){var url=watchURL(item.url).split('#')[0],ident='flixtor:'+(tv(item)?'tv':'movie')+':'+pid(item),titles={},context;
-    if(episodeContext.titles&&episodeContext.titles[ident])titles[ident]=episodeContext.titles[ident];
+    // The series' episode facts travel under its id, including an import layer the service only had by name.
+    var facts=FTV_HISTORY.episodeFacts(item,episodeContext.titles,episodeContext.episodeNames);if(facts)titles[ident]=facts;
     context={profileId:selectedProfile||episodeContext.profileId||'household',titles:titles};
     // A known rating travels with the title (keyed by id, so it never applies to another title).
     if(item.feedback&&RATING_VALUES.indexOf(item.feedback.rating)!==-1){context.ratings={};context.ratings[ident]=item.feedback.rating;}
     // The resolved watched entry travels the same way: FlixTor pages cannot ask the service.
-    if(episodeContext.watched&&episodeContext.watched[ident]){context.watched={};context.watched[ident]=episodeContext.watched[ident];}
+    var seen=watchedState(item);if(seen.source!=='native'&&seen.source!=='none'){context.watched={};context.watched[ident]={watched:seen.watched,source:seen.source};}
     return url+'#ftv-'+mode+'='+encodeURIComponent(JSON.stringify(context));
   }
   function episodeFacts(){var id=(location.pathname.match(/\/watch\/tv\/(\d+)/)||[])[1];return episodeContext.titles&&episodeContext.titles['flixtor:tv:'+id]||null;}
@@ -272,7 +273,7 @@
     req.send(JSON.stringify(payload));
   }
   function useRecommendationPack(data){
-    var chosen=data||{};episodeContext={profileId:chosen.id||selectedProfile||'household',titles:chosen.episodeProgress||{},watched:chosen.watched&&typeof chosen.watched==='object'?chosen.watched:{}};
+    var chosen=data||{};episodeContext={profileId:chosen.id||selectedProfile||'household',titles:chosen.episodeProgress||{},watched:chosen.watched&&typeof chosen.watched==='object'?chosen.watched:{},watchedNames:chosen.watchedNames&&typeof chosen.watchedNames==='object'?chosen.watchedNames:{},episodeNames:chosen.importedEpisodeNames&&typeof chosen.importedEpisodeNames==='object'?chosen.importedEpisodeNames:{}};
     recommendations=(chosen.items||[]).slice(0,24).filter(function(i){return typeof i.title==='string'&&typeof i.url==='string'&&watchURL(i.url)&&typeof i.image==='string'&&/^https:\/\/img\.xcdn\.to\//.test(i.image);}).map(function(i){return {title:i.title,year:String(i.year||''),meta:String(i.meta||''),image:i.image,url:watchURL(i.url),reason:String(i.reason||'From your imported history'),rating:String(i.rating||''),feedback:i.feedback||{},profileId:chosen.id||'household'};});
     recommendationInfo={seedCount:Number(chosen.seedCount)||0,model:String(chosen.model||'Genre similarity'),scope:String(chosen.scope||'Imported history'),profileName:String(chosen.name||'Household · Amazon unassigned'),stale:!!chosen.stale,cacheStatus:chosen.cacheStatus||'fresh',generatedAt:chosen.generatedAt||null};
   }
