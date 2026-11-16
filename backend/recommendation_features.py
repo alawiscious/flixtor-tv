@@ -25,16 +25,18 @@ def enrich_features(root,crew=None):
     all_items={**items,**{s['item']['id']:s['item'] for s in matched['seeds']}}
     db=sqlite3.connect(root.parent/'metadata/title-index.sqlite');db.row_factory=sqlite3.Row
     names={}
-    for row in db.execute('select t.* from titles t join names n on t.id=n.id'):
-        names.setdefault(norm(row['title']),{})[row['id']]=dict(row)
-    db.close()
+    def named(key):
+        # Looked up per title: the index names every film and series, far too many to read whole.
+        if key not in names:names[key]={r['id']:dict(r) for r in db.execute('select t.* from names n join titles t on t.id=n.id where n.key=?',(key,)) if norm(r['title'])==key}
+        return names[key]
     metadata={}
     for ident,item in all_items.items():
         source_id=item.get('metadata_id')
         if not source_id:
-            candidates=[r for r in names.get(norm(item['title']),{}).values() if str(r['year'])==item['year'] and (r['type'] in {'tvSeries','tvMiniSeries'})==(item['type']=='tv') and r['type'] in {'movie','tvMovie','tvSeries','tvMiniSeries'}]
+            candidates=[r for r in named(norm(item['title'])).values() if str(r['year'])==item['year'] and (r['type'] in {'tvSeries','tvMiniSeries'})==(item['type']=='tv') and r['type'] in {'movie','tvMovie','tvSeries','tvMiniSeries'}]
             if len(candidates)==1:source_id=candidates[0]['id']
         metadata[ident]=dict(source_id=source_id,metadata_vector=vector(item),creators=[])
+    db.close()
     lookup={entry['source_id']:[] for entry in metadata.values() if entry['source_id']}
     if crew and Path(crew).exists():
         with gzip.open(crew,'rt') as f:

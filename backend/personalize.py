@@ -127,9 +127,11 @@ def main():
     report={'coverage':coverage,'catalogue_items':len(items),'interest_seeds':len(seeds),'seen_titles':len(seen),'matched_source_records':len(review),'applied':False}
     if a.apply:
         if not seeds:raise SystemExit('No reliable seeds: expand catalogue or review mappings first.')
-        call('/api/items',[{'ItemId':i['id'],'IsHidden':False,'Categories':['playable',i['type']],'Labels':{'genres':i['genres'],'title':i['title'],'year':i['year'],'provider':'flixtor'},'Comment':i['title']} for i in items.values()],'POST')
+        # Every item written to Gorse carries its vector, so a failure before enrich_features cannot leave vectorless items behind.
+        from recommendation_features import vector,enrich_features
+        call('/api/items',[{'ItemId':i['id'],'IsHidden':False,'Categories':['playable',i['type']],'Labels':{'genres':i['genres'],'title':i['title'],'year':i['year'],'provider':'flixtor','metadata_vector':vector(i)},'Comment':i['title']} for i in items.values()],'POST')
         history_items=[s['item'] for s in seeds.values() if s['item']['id'] not in items]
-        if history_items:call('/api/items',[{'ItemId':i['id'],'IsHidden':True,'Categories':['history-only',i['type']],'Labels':{'genres':i['genres'],'title':i['title'],'year':i['year'],'provider':'imdb'},'Comment':i['title']} for i in history_items],'POST')
+        if history_items:call('/api/items',[{'ItemId':i['id'],'IsHidden':True,'Categories':['history-only',i['type']],'Labels':{'genres':i['genres'],'title':i['title'],'year':i['year'],'provider':'imdb','metadata_vector':vector(i)},'Comment':i['title']} for i in history_items],'POST')
         feedback=[]
         for kind,records in [('import_interest',seeds),('watched',seen)]:
             for item_id,record in records.items():
@@ -161,9 +163,7 @@ def main():
         actual=call('/api/user/'+a.profile+'/feedback')
         keys={(f['FeedbackType'],f['ItemId']) for f in actual}
         assert all((f['FeedbackType'],f['ItemId']) in keys for f in feedback)
-        if (out/'feature-inputs.json').exists():
-            from recommendation_features import enrich_features
-            enrich_features(out)
+        if (out/'feature-inputs.json').exists():enrich_features(out)
         report['applied']=True;report['feedback_verified']=len(feedback)
     (out/'recommendation_import_report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
 if __name__=='__main__':main()
